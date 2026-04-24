@@ -15,6 +15,7 @@ import os
 import random
 import socket
 import sys
+import threading
 import time
 import traceback
 from datetime import datetime, timedelta
@@ -35,6 +36,7 @@ BASE_URL = "https://ilinkai.weixin.qq.com"
 STATE_FILE = paths.ILINK_STATE
 LOG_FILE = paths.ILINK_LOG
 _LOG = app_logger.get_logger("ilink", LOG_FILE)
+_state_lock = threading.Lock()
 CHANNEL_VERSION = os.environ.get("ILINK_CHANNEL_VERSION", "1.0.2")
 PROXY_MODE = (os.environ.get("ILINK_PROXY_MODE", "auto").strip().lower() or "auto")
 if PROXY_MODE not in {"auto", "direct", "proxy"}:
@@ -203,10 +205,11 @@ def load_state() -> dict:
 
 
 def save_state(state: dict) -> None:
-    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = STATE_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    os.replace(tmp, STATE_FILE)
+    with _state_lock:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        tmp = STATE_FILE.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, STATE_FILE)
 
 
 def probe_session(state: dict) -> str:
