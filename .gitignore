@@ -1,0 +1,27 @@
+# 环境变量 & 密钥
+.env
+
+# 运行时状态 & 用户数据（勿泄露 bot token / 微信 ID）
+/ilink_state.json
+/welcomed_users.json
+/user_profiles.json
+
+# 日志（根目录旧版 + Phase 0.5 后迁到 data/）
+*.log
+/data/
+
+# 原子写入临时文件
+*.tmp
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+
+# 编辑器 & 系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
