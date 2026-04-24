@@ -14,6 +14,7 @@ LOGS_DIR = DATA_DIR / "logs"
 ILINK_STATE = DATA_DIR / "ilink_state.json"
 WELCOMED_USERS = DATA_DIR / "welcomed_users.json"
 ILINK_LOG = LOGS_DIR / "ilink.log"
+AI_LOG = LOGS_DIR / "ai.log"
 
 
 def ensure_dirs() -> None:

@@ -24,6 +24,7 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 # Load .env when ilink.py is run directly.
 import config  # noqa: F401
+import logger as app_logger
 import paths
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
@@ -33,6 +34,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 BASE_URL = "https://ilinkai.weixin.qq.com"
 STATE_FILE = paths.ILINK_STATE
 LOG_FILE = paths.ILINK_LOG
+_LOG = app_logger.get_logger("ilink", LOG_FILE)
 CHANNEL_VERSION = os.environ.get("ILINK_CHANNEL_VERSION", "1.0.2")
 PROXY_MODE = (os.environ.get("ILINK_PROXY_MODE", "auto").strip().lower() or "auto")
 if PROXY_MODE not in {"auto", "direct", "proxy"}:
@@ -40,14 +42,7 @@ if PROXY_MODE not in {"auto", "direct", "proxy"}:
 
 
 def _log(message: str) -> None:
-    stamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    line = f"[{stamp}] {message}\n"
-    try:
-        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with LOG_FILE.open("a", encoding="utf-8") as f:
-            f.write(line)
-    except OSError:
-        pass
+    _LOG.info(message)
 
 
 def _normalize_proxy_url(raw: str) -> str:

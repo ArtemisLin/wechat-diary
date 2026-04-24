@@ -16,8 +16,12 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, ProxyHandler, build_opener
 
 import config
+import logger as app_logger
+import paths
 import users
 import welcome
+
+_AI_LOG = app_logger.get_logger("ai", paths.AI_LOG)
 
 POLISH_PROMPT = """你是日记助理。用户刚说了一段话(可能是语音转写,有口语痕迹)。
 请轻度润色:去掉"嗯""那个""这个"这类语气词,理顺断句,适当分段。
@@ -94,13 +98,15 @@ def _call_llm(prompt: str, timeout: int = 15) -> str | None:
     elif AI_PROXY_MODE == "auto" and _PROXY_OPENER:
         openers.append(("proxy", _PROXY_OPENER))
 
-    for _, opener in openers:
+    for transport, opener in openers:
         try:
             with opener.open(req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             return data["choices"][0]["message"]["content"].strip()
-        except (HTTPError, URLError, socket.timeout, KeyError, json.JSONDecodeError, ValueError, OSError):
+        except (HTTPError, URLError, socket.timeout, KeyError, json.JSONDecodeError, ValueError, OSError) as e:
+            _AI_LOG.warning(f"{transport} call_failed: {type(e).__name__}: {e}")
             continue
+    _AI_LOG.warning("all transports exhausted, LLM call returned None")
     return None
 
 
