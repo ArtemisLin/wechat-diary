@@ -119,7 +119,7 @@ python main.py
 - **iLink API 强制直连**：参考 017Pet/015fridge 的踩坑经验，`ilinkai.weixin.qq.com` 走 Clash 会出现 TLS 中间层延迟、QR 状态轮询超时等怪问题。代码里通过清空 proxy 环境变量 + `no_proxy=*` + `ProxyHandler({})` 三重保险强制绕过。**没有开关可调。**
 - **AI API 可选代理**：DeepSeek 默认 auto（先直连，失败回落 Clash），也可 direct/proxy 强制。
 
-程序运行时会在根目录生成 `ilink_debug.log`,用于排查收发消息问题。
+程序运行时会在 `data/logs/ilink.log` 写调试日志,用于排查收发消息问题。
 
 ## 验收流程
 
@@ -162,14 +162,21 @@ AI 只润色本次说的片段,然后 `append` 到文件尾。**旧段落永远�
 wechat-diary/
 ├── src/
 │   ├── config.py          # env + 时区工具
+│   ├── paths.py           # data/ 路径集中管理 + 旧文件迁移
 │   ├── users.py           # 单用户实现(接口预留多用户)
 │   ├── diary_writer.py    # LLM 润色 + 写 md
 │   ├── ilink.py           # 精简 iLink 客户端(从 017Pet 借鉴)
 │   ├── scheduler.py       # APScheduler 提醒
+│   ├── welcome.py         # 文案 + 欢迎逻辑
+│   ├── welcome_store.py   # 已欢迎用户集合持久化
 │   └── main.py            # 入口
-├── tests/                 # 22 个单测
+├── tests/                 # 单测(pytest)
 ├── start.bat              # 双击启动
-├── ilink_state.json       # 登录状态(运行时生成,勿入 git)
+├── data/                  # 运行时生成(勿入 git): state/log/已欢迎记录
+│   ├── ilink_state.json
+│   ├── welcomed_users.json
+│   └── logs/
+│       └── ilink.log
 └── .env                   # 密钥(自建,勿入 git)
 ```
 

@@ -16,6 +16,7 @@ import sys
 import config  # noqa: 入口脚本初始化编码/env
 import diary_writer
 import ilink
+import paths
 import welcome
 import welcome_store
 from intents import Intent, detect
@@ -70,6 +71,7 @@ def _make_send_fn(state: dict):
 
 
 def main() -> int:
+    paths.migrate_legacy()
     state = ilink.load_state()
     if not state.get("bot_token"):
         print("  未登录。先运行: python ilink.py login")

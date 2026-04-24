@@ -43,7 +43,7 @@ if "%APP_EXIT%"=="2" (
 goto :end
 
 :force_relogin
-del /q ilink_state.json 2>nul
+del /q data\ilink_state.json 2>nul
 goto :main_loop
 
 :end
@@ -100,7 +100,7 @@ if not errorlevel 1 set "PY_CMD=%CANDIDATE%"
 exit /b 0
 
 :ensure_login
-if not exist ilink_state.json goto :login
+if not exist data\ilink_state.json goto :login
 
 cd src
 %PY_CMD% ilink.py status

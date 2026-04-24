@@ -24,14 +24,15 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 # Load .env when ilink.py is run directly.
 import config  # noqa: F401
+import paths
 
 if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 
 BASE_URL = "https://ilinkai.weixin.qq.com"
-STATE_FILE = Path(__file__).resolve().parent.parent / "ilink_state.json"
-LOG_FILE = Path(__file__).resolve().parent.parent / "ilink_debug.log"
+STATE_FILE = paths.ILINK_STATE
+LOG_FILE = paths.ILINK_LOG
 CHANNEL_VERSION = os.environ.get("ILINK_CHANNEL_VERSION", "1.0.2")
 PROXY_MODE = (os.environ.get("ILINK_PROXY_MODE", "auto").strip().lower() or "auto")
 if PROXY_MODE not in {"auto", "direct", "proxy"}:
@@ -42,6 +43,7 @@ def _log(message: str) -> None:
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{stamp}] {message}\n"
     try:
+        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
         with LOG_FILE.open("a", encoding="utf-8") as f:
             f.write(line)
     except OSError:
@@ -206,6 +208,7 @@ def load_state() -> dict:
 
 
 def save_state(state: dict) -> None:
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = STATE_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, STATE_FILE)
@@ -511,6 +514,7 @@ def _status_cli(state: dict) -> int:
 
 
 def _cli() -> int:
+    paths.migrate_legacy()
     state = load_state()
     if len(sys.argv) < 2:
         print("用法: python ilink.py <login|status|send TEXT>")

@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
-STORE_FILE = Path(__file__).resolve().parent.parent / "welcomed_users.json"
+import paths
+
+STORE_FILE = paths.WELCOMED_USERS
 
 
 def _load() -> set[str]:
@@ -21,6 +22,7 @@ def _load() -> set[str]:
 
 
 def _save(s: set[str]) -> None:
+    STORE_FILE.parent.mkdir(parents=True, exist_ok=True)
     tmp = STORE_FILE.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(sorted(s), ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, STORE_FILE)
