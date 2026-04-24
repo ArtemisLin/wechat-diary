@@ -21,6 +21,7 @@ def check_and_remind(user_id: str, text: str, send_fn: Callable[[str, str], bool
     """单用户:当天无内容则发提醒。返回"是否发送了"。
     send_fn(user_id, text) → bool"""
     try:
+        users.load(user_id)
         if diary_writer.today_has_content(user_id):
             return False
         return bool(send_fn(user_id, text))
