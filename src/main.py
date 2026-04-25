@@ -13,10 +13,12 @@ from __future__ import annotations
 import atexit
 import sys
 
+import chat_handler
 import config  # noqa: 入口脚本初始化编码/env
 import diary_writer
 import ilink
 import paths
+import session_state
 import welcome
 import welcome_store
 from intents import Intent, detect
@@ -26,33 +28,58 @@ NUDGE_EVERY = 4  # 每 4 段追加一次劝收尾
 
 
 def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
-    """主业务路由。返回给用户的回复(多段用 \\n\\n 间隔)或 None。"""
+    """主业务路由, 双模式 (chat / diary) 感知。"""
     if user_id != config.USER_ID:
-        return "这个日记本是别人的,抱歉~"
+        return "这个日记本是别人的, 抱歉~"
 
+    # 跨天自动 reset; 拿到当前模式
+    session = session_state.load_or_reset(user_id)
     intent = detect(text)
 
+    # 全模式都生效的命令
     if intent is Intent.HELP:
         return welcome.HELP_TEXT
 
-    if intent is Intent.UNDO:
-        ok = diary_writer.undo_last_block(user_id)
-        return "已删掉最后一段 🗑️" if ok else "今天还没记东西,没啥可撤的 🤔"
+    # === DIARY 模式 ===
+    if session.mode == "diary":
+        if intent is Intent.UNDO:
+            ok = diary_writer.undo_last_block(user_id)
+            return "已删掉最后一段 🗑️" if ok else "今天还没记东西, 没啥可撤的 🤔"
+        if intent is Intent.FINALIZE:
+            ok = diary_writer.finalize_today(user_id)
+            if not ok:
+                return "今天还没写东西呢, 说一句吧?"
+            session_state.exit_diary(user_id)
+            chat_handler.reset_history(user_id)
+            return welcome.random_closing()
+        # diary 模式下其他所有意图都当日记记 (包括 CHAT/START_DIARY/默认 DIARY)
+        # 注: 用户在 diary 中再说"开始记日记", 就当成日记内容写进去, 不重复进入
+        reply, n = diary_writer.write(user_id, text, is_voice)
+        if n > 0 and n % NUDGE_EVERY == 0:
+            reply = f"{reply}\n\n{welcome.NUDGE_TEXT}"
+        return reply
 
+    # === CHAT 模式 ===
+    if intent is Intent.START_DIARY:
+        session_state.enter_diary(user_id)
+        chat_handler.reset_history(user_id)
+        return welcome.random_enter_diary()
+
+    if intent is Intent.UNDO:
+        return welcome.NOT_IN_DIARY_HINTS["undo"]
     if intent is Intent.FINALIZE:
-        ok = diary_writer.finalize_today(user_id)
-        if not ok:
-            return "今天还没写东西呢,说一句吧?"
-        return welcome.random_closing()
+        return welcome.NOT_IN_DIARY_HINTS["finalize"]
 
     if intent is Intent.CHAT:
-        # 闲聊招呼: 不写日记, 只回温暖问候。完整 6 类 CHAT 留 Phase 1.3。
-        return welcome.random_greeting()
+        # 招呼词走静态回复池 (省 LLM 开销)
+        reply = welcome.random_greeting()
+    else:
+        # 其他普通消息 (Intent.DIARY in chat mode = 不在记录中的普通对话) 走 LLM 闲聊
+        reply = chat_handler.chat(user_id, text)
 
-    # Intent.DIARY
-    reply, n = diary_writer.write(user_id, text, is_voice)
-    if n > 0 and n % NUDGE_EVERY == 0:
-        reply = f"{reply}\n\n{welcome.NUDGE_TEXT}"
+    new_count = session_state.increment_chat_count(user_id)
+    if new_count >= 2:
+        reply = reply + welcome.CHAT_COST_REMINDER
     return reply
 
 
