@@ -28,6 +28,10 @@ if not "%LOGIN_EXIT%"=="0" (
 call :run_main
 set "APP_EXIT=!errorlevel!"
 
+REM exit 0 = 正常退出, 不重试
+if "%APP_EXIT%"=="0" goto :end
+
+REM exit 2 = session 过期, 清 state 重新登录 (复用 ATTEMPT 计数)
 if "%APP_EXIT%"=="2" (
     if !ATTEMPT! LSS %MAX_ATTEMPTS% (
         echo.
@@ -38,7 +42,21 @@ if "%APP_EXIT%"=="2" (
         echo.
         echo   Session expired - max attempts reached ^(%MAX_ATTEMPTS%^)
         echo   Please try again later.
+        goto :end
     )
+)
+
+REM Phase 0.6: 其他非零 = 崩溃, 等 10 秒重启 (不清 session)
+if !ATTEMPT! LSS %MAX_ATTEMPTS% (
+    echo.
+    echo   Crashed ^(exit=!APP_EXIT!^) - retrying !ATTEMPT!/%MAX_ATTEMPTS% in 10 seconds
+    echo.
+    timeout /t 10 /nobreak >nul
+    goto :main_loop
+) else (
+    echo.
+    echo   Crashed ^(exit=!APP_EXIT!^) - max attempts reached ^(%MAX_ATTEMPTS%^)
+    echo   Check data\logs\ilink.log for details.
 )
 goto :end
 
