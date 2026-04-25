@@ -55,7 +55,7 @@ NOT_IN_DIARY_HINTS = {
 # 每次"结束"随机抽一句, 保持仪式感不腻
 CLOSING_LINES: list[str] = [
     "今天的故事我收好啦, 晚安 ✨",
-    "已经装订成册, 明晚见 📖",
+    "已经装订成册 📖",
     "归档完毕, 这一页属于今天了。",
     "小册子合上了, 安心睡吧。",
     "好了, 今天的心事都在本子里了。",
@@ -64,6 +64,16 @@ CLOSING_LINES: list[str] = [
     "今天的字, 都存好了, 晚安。",
     "咔哒, 打卡完成 ✓ 今天辛苦了。",
     "一天的褶皱, 已经熨平收好。",
+]
+
+
+# 告别句池: random_closing 在仪式感结束语后追加一句, 强化"明天再见"的陪伴感。
+CLOSING_FAREWELL_LINES: list[str] = [
+    "明天见 👋",
+    "明天再聊~",
+    "好梦, 明天见 🌙",
+    "明天我等你 📖",
+    "明天再见呀 ✨",
 ]
 
 
@@ -82,8 +92,8 @@ CHAT_GREETING_REPLIES: list[str] = [
 
 
 def random_closing() -> str:
-    """从 CLOSING_LINES 随机抽一句。"""
-    return random.choice(CLOSING_LINES)
+    """随机拼接一句仪式感结束语 + 一句"明天见"告别。"""
+    return random.choice(CLOSING_LINES) + "\n\n" + random.choice(CLOSING_FAREWELL_LINES)
 
 
 def random_greeting() -> str:
