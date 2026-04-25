@@ -45,6 +45,10 @@ def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
             return "今天还没写东西呢,说一句吧?"
         return welcome.random_closing()
 
+    if intent is Intent.CHAT:
+        # 闲聊招呼: 不写日记, 只回温暖问候。完整 6 类 CHAT 留 Phase 1.3。
+        return welcome.random_greeting()
+
     # Intent.DIARY
     reply, n = diary_writer.write(user_id, text, is_voice)
     if n > 0 and n % NUDGE_EVERY == 0:

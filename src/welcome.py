@@ -43,6 +43,21 @@ CLOSING_LINES: list[str] = [
 NUDGE_TEXT = "差不多了?还有吗?没有就发「结束」,我帮你收进今天的小册子。"
 
 
+# Phase 0.B 最小版招呼回复池: 命中 Intent.CHAT 时随机抽一句, 不写日记。
+CHAT_GREETING_REPLIES: list[str] = [
+    "嗨~ 我在呢 😊 想说点什么?",
+    "在的在的, 今天过得怎么样?",
+    "嗨~ 来啦? 想到什么直接说就好",
+    "我在呢, 慢慢说我都听着",
+    "嗨~ 准备好开聊了吗?",
+]
+
+
 def random_closing() -> str:
     """从 CLOSING_LINES 随机抽一句。"""
     return random.choice(CLOSING_LINES)
+
+
+def random_greeting() -> str:
+    """从 CHAT_GREETING_REPLIES 随机抽一句。"""
+    return random.choice(CHAT_GREETING_REPLIES)

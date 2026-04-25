@@ -17,12 +17,22 @@ class Intent(Enum):
     FINALIZE = "finalize"     # 结束今日
     UNDO = "undo"             # 撤回上一段
     HELP = "help"             # 看帮助
+    CHAT = "chat"             # 闲聊招呼(短消息且命中招呼词, 不写日记只回应)
 
 
 # 规则关键词(精确匹配完整消息去除标点后)
 _FINALIZE_KEYWORDS = {"结束", "收尾", "收工", "打烊", "归档", "完了"}
 _UNDO_KEYWORDS = {"撤回", "删掉", "删除", "撤销", "删掉上一段", "删掉上条", "撤回上一段"}
 _HELP_KEYWORDS = {"/help", "help", "帮助", "怎么用", "使用说明", "菜单"}
+
+# Phase 0.B 最小版闲聊识别: 仅"招呼"一类, 完整 6 类 CHAT 留 Phase 1.3。
+# 词集保守, 不包含"今天/今晚"等可能开启日记的词, 避免误判。
+_CHAT_GREETING_KEYWORDS = {
+    "你好", "您好", "嗨", "hi", "hello", "hihi", "halo",
+    "在吗", "在么", "在不在", "在嘛", "喂",
+    "我来啦", "我来了", "来啦", "我来",
+    "早", "早安", "早上好", "中午好", "下午好", "晚上好",
+}
 
 
 _STRIP_CHARS = "。!?!?,,、~ \t\n\u3000"
@@ -48,4 +58,6 @@ def detect(text: str) -> Intent:
         return Intent.UNDO
     if norm in _HELP_KEYWORDS:
         return Intent.HELP
+    if norm in _CHAT_GREETING_KEYWORDS:
+        return Intent.CHAT
     return Intent.DIARY

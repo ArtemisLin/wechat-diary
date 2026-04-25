@@ -107,3 +107,25 @@ def test_unknown_user_rejected(setup):
     main, *_ = setup
     reply = main._handle("u-other", "你好", is_voice=False)
     assert "别人的" in reply
+
+
+def test_chat_greeting_does_not_write_diary(setup):
+    """招呼走 CHAT: 不调 LLM, 不写日记文件, 只回温暖问候。"""
+    main, diary_writer, _, vault = setup
+    with patch.object(diary_writer, "_call_llm", return_value="不该被调用") as mock_llm:
+        reply = main._handle("u-abc", "你好", is_voice=False)
+    assert reply, "招呼必须有回复"
+    assert "嗨" in reply or "在呢" in reply or "在的" in reply, f"未命中招呼回复池: {reply!r}"
+    mock_llm.assert_not_called()
+    md_files = list(vault.glob("*.md"))
+    assert md_files == [], f"招呼不应写日记文件, 但发现: {md_files}"
+
+
+def test_chat_greeting_variants_route_to_chat(setup):
+    """常见招呼词都走 CHAT 路径(不写日记)。"""
+    main, diary_writer, _, vault = setup
+    with patch.object(diary_writer, "_call_llm", return_value="x") as mock_llm:
+        for greeting in ["嗨", "在吗", "我来啦", "早上好"]:
+            main._handle("u-abc", greeting, is_voice=False)
+    mock_llm.assert_not_called()
+    assert list(vault.glob("*.md")) == []

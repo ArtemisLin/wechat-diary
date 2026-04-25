@@ -51,3 +51,25 @@ def test_borderline_length():
 def test_case_insensitive_help():
     assert detect("HELP") == Intent.HELP
     assert detect("Help") == Intent.HELP
+
+
+def test_chat_greetings():
+    for t in [
+        "你好", "您好", "嗨", "Hi", "HELLO", "在吗", "在么", "我来啦", "我来了",
+        "早", "早上好", "晚上好", "下午好", "喂",
+        "你好。", "嗨!", "  在吗 ",
+    ]:
+        assert detect(t) == Intent.CHAT, f"failed: {t!r}"
+
+
+def test_long_greeting_is_diary():
+    """招呼词混入长句要走 DIARY, 不能误判为闲聊。"""
+    assert detect("你好啊我今天好累") == Intent.DIARY
+    assert detect("早上好今天天气不错") == Intent.DIARY
+
+
+def test_diary_words_not_chat():
+    """常见的日记开头不应被识别为招呼。"""
+    assert detect("今天") == Intent.DIARY
+    assert detect("今晚") == Intent.DIARY
+    assert detect("吃了") == Intent.DIARY
