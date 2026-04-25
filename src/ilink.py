@@ -37,6 +37,11 @@ STATE_FILE = paths.ILINK_STATE
 LOG_FILE = paths.ILINK_LOG
 _LOG = app_logger.get_logger("ilink", LOG_FILE)
 _state_lock = threading.Lock()
+
+# 长轮询超时降噪阈值: 协议本身每隔几秒就会 timeout 重连, 视为正常 keep-alive。
+# 仅当连续超过 NOISE_THRESHOLD 次仍超时, 才视为真实网络故障并告警。
+LONGPOLL_NOISE_THRESHOLD = 5
+LONGPOLL_OUTAGE_INTERVAL = 30
 CHANNEL_VERSION = os.environ.get("ILINK_CHANNEL_VERSION", "1.0.2")
 PROXY_MODE = (os.environ.get("ILINK_PROXY_MODE", "auto").strip().lower() or "auto")
 if PROXY_MODE not in {"auto", "direct", "proxy"}:
@@ -407,17 +412,22 @@ def run_loop(state: dict, on_message) -> str:
 
             if resp.get("timeout"):
                 timeout_streak += 1
-                if timeout_streak == 1:
+                # 长轮询协议下少量 timeout 是正常 keep-alive, 不打印; 仅当连续
+                # 多次失败才告警, 避免控制台被刷屏。底层错误细节已通过 _api_request
+                # 的 _log 记入 ilink.log, 排查时看日志即可。
+                if timeout_streak == LONGPOLL_NOISE_THRESHOLD:
                     detail = resp.get("detail", "")
                     suffix = f": {detail}" if detail else ""
-                    print(f"  iLink 连接超时/中断，正在重试{suffix}")
-                elif timeout_streak % 10 == 0:
-                    print(f"  iLink 连接仍未恢复(连续 {timeout_streak} 次)，继续重试...")
+                    print(f"  iLink 网络似乎不稳, 仍在重试{suffix}")
+                elif timeout_streak > LONGPOLL_NOISE_THRESHOLD and \
+                        timeout_streak % LONGPOLL_OUTAGE_INTERVAL == 0:
+                    print(f"  iLink 已重试 {timeout_streak} 次, 仍在尝试...")
                 time.sleep(1)
                 continue
 
             if timeout_streak:
-                print(f"  iLink 连接已恢复(之前连续超时 {timeout_streak} 次)")
+                if timeout_streak >= LONGPOLL_NOISE_THRESHOLD:
+                    print(f"  iLink 连接已恢复(之前连续 {timeout_streak} 次)")
                 timeout_streak = 0
 
             if "error" in resp or "_ret_error" in resp:
