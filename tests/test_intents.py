@@ -88,3 +88,46 @@ def test_start_diary_not_misclassified():
     assert detect("今天工作开始得很早") == Intent.DIARY
     # "我要记日记" 短而精确, 仍走 START_DIARY (这是对的)
     assert detect("我要记日记") == Intent.START_DIARY
+
+
+# === Bug 复现 + 修复测试 (语气词去除 + 长句子串匹配) ===
+
+def test_start_diary_with_tail_particles():
+    """带尾部语气词的指令应被识别为 START_DIARY。
+
+    复现 bug: 用户发"开始记日记吧。" 没切到 diary, 进了 LLM 闲聊。
+    根因: _normalize 不去"吧/啦/呀/哦/嘛/呗/啊/哈"等语气词。
+    """
+    for t in [
+        "开始记日记吧", "开始记日记吧。", "开始记日记啊", "开始记日记呀",
+        "记日记吧", "记日记呗", "开始啦", "开始呗",
+        "我要记日记吧", "记一下吧",
+    ]:
+        assert detect(t) == Intent.START_DIARY, f"failed: {t!r}"
+
+
+def test_start_diary_in_long_sentence():
+    """长句中含明确切换短语 → START_DIARY。
+
+    复现 bug: 用户发"我今天过得还好我们开始记日记吧, 不说这些闲聊的话了"
+    被当 DIARY 走 LLM, LLM 又假装切换。
+    """
+    long_msgs = [
+        "我今天过得还好我们开始记日记吧, 不说这些闲聊的话了",
+        "今天事情挺多的, 开始记日记吧",
+        "好吧, 开始记录今天的事情",
+        "聊够了, 开始写日记",
+    ]
+    for t in long_msgs:
+        assert detect(t) == Intent.START_DIARY, f"failed: {t!r}"
+
+
+def test_long_sentence_without_phrase_still_diary():
+    """长句虽含'开始'/'记'等单字但无完整切换短语 → 仍走 DIARY, 不误触发。"""
+    for t in [
+        "今天工作开始得很早, 一直到晚上才结束",
+        "我开始觉得这件事不太对劲, 但又说不出哪里不对",
+        "我们开始忙了一天最后没成什么事",
+        "我记得今天有个会议但忘了几点",
+    ]:
+        assert detect(t) == Intent.DIARY, f"误判 START_DIARY: {t!r}"

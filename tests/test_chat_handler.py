@@ -101,3 +101,19 @@ def test_chat_no_api_key_returns_fallback(setup, monkeypatch):
     ch.reset_history("u-abc")
     reply = ch.chat("u-abc", "你好")
     assert reply in ch.CHAT_FALLBACK_REPLIES
+
+
+def test_prompt_forbids_fake_mode_switching(setup):
+    """CHAT_SYSTEM_PROMPT 必须明确禁止 LLM 假装切换模式 (避免欺骗用户)。
+
+    复现 bug: LLM 在 chat 模式下自由发挥说"已切换到日记模式", 但 main
+    路由根本没切, session_state 还是 chat。
+    """
+    ch = setup
+    prompt = ch.CHAT_SYSTEM_PROMPT
+    # 必须明确禁止假装切换的关键短语
+    assert "已切换" in prompt or "假装" in prompt or "没有切换" in prompt or "没有...能力" in prompt, \
+        f"prompt 必须明确禁止 LLM 假装切换模式, 当前 prompt:\n{prompt}"
+    # 必须包含'禁止'级别的语言强度
+    assert "禁止" in prompt or "不要说" in prompt or "绝不" in prompt, \
+        f"prompt 应有强禁止语义, 当前 prompt:\n{prompt}"

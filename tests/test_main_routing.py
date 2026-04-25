@@ -246,3 +246,33 @@ def test_help_works_in_both_modes(setup):
     main._handle("u-abc", "开始记日记", is_voice=False)
     r2 = main._handle("u-abc", "帮助", is_voice=False)
     assert "使用指南" in r1 and "使用指南" in r2
+
+
+# === Bug 复现 (root cause: 漏洞 1 + 2) ===
+
+def test_particle_start_diary_actually_switches_mode(setup):
+    """带语气词的'开始记日记吧'必须真切到 diary 模式 (非 LLM 假装切换)。"""
+    import session_state
+    main, *_ = setup
+    main._handle("u-abc", "开始记日记吧", is_voice=False)
+    s = session_state.load_or_reset("u-abc")
+    assert s.mode == "diary", f"应真切到 diary, 实际: {s.mode}"
+
+
+def test_long_sentence_start_diary_actually_switches_mode(setup):
+    """长句含切换短语必须真切到 diary 模式 (避免 LLM 在 chat 模式下假装切换)。"""
+    import session_state
+    main, *_ = setup
+    main._handle("u-abc", "我今天过得还好我们开始记日记吧, 不说这些闲聊的话了", is_voice=False)
+    s = session_state.load_or_reset("u-abc")
+    assert s.mode == "diary", f"应真切到 diary, 实际: {s.mode}"
+
+
+def test_particle_start_diary_returns_enter_diary_text(setup):
+    """带语气词的切换指令应返回 ENTER_DIARY 文案 (而非 LLM 闲聊回复)。"""
+    main, *_ = setup
+    reply = main._handle("u-abc", "开始记日记吧", is_voice=False)
+    # ENTER_DIARY_REPLIES 都含"📖"或"记今天"或"记录模式"
+    assert "📖" in reply or "记录模式" in reply or "记今天" in reply, f"未命中 ENTER_DIARY: {reply!r}"
+    # 不应含 chat 模式的 token 提示
+    assert "token" not in reply

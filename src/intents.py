@@ -2,7 +2,7 @@
 
 设计原则:
 - 规则优先、零延迟(<1ms),只在消息**很短**时走规则
-- >15 字符的消息直接判为日记,不做规则匹配(借鉴 015fridge 经验:长复合句交给 AI/日记逻辑)
+- >15 字符的消息默认判为日记,但例外: 长句若含明确切换短语 → START_DIARY
 - 尾部空白、全角/半角、常见标点都要容忍
 """
 from __future__ import annotations
@@ -43,22 +43,65 @@ _START_DIARY_KEYWORDS = {
 }
 
 
-_STRIP_CHARS = "。!?!?,,、~ \t\n\u3000"
+_STRIP_CHARS = "。!?!?,,、~ \t\n　"
+
+# Phase Debug: 中文尾部语气词集合
+# 用户口语指令常带"开始记日记吧/记日记呗/开始啦"等语气词, normalize 时全部去掉
+# 还原为核心命令 → 让 _START_DIARY_KEYWORDS 等词集能命中。
+_TAIL_PARTICLES = ("吧", "啊", "啦", "呀", "哦", "嘛", "呗", "哈")
+
+# Phase Debug: 切换短语子串匹配 (任意长度都生效, 优先级最高)
+# 用于:
+# (1) 长句中含切换意图 ("我今天还行我们开始记日记吧, 不说闲聊了")
+# (2) 短句带语气词 ("开始记日记呀!") - 此时 _normalize 已剥语气词,
+#     走 _START_DIARY_KEYWORDS; 但短句长度刚好命中边界 (=15) 时也走这里兜底
+# 边界保守: 不写"开始"单字, 避免"今天工作开始得很早"等长句误触发。
+_START_DIARY_PHRASES = (
+    "开始记日记",
+    "开始记录",
+    "开始写日记",
+    "我们记日记",
+)
 
 
 def _normalize(text: str) -> str:
-    """去掉首尾空白 + 末尾标点,小写化,全角空格归一。"""
-    s = text.strip().replace("\u3000", " ")
-    s = s.rstrip(_STRIP_CHARS).lstrip()
-    return s.lower()
+    """去掉首尾空白 + 末尾标点 + 尾部语气词, 小写化, 全角空格归一。"""
+    s = text.strip().replace("　", " ")
+    s = s.rstrip(_STRIP_CHARS).lstrip().lower()
+    # 反复去尾部语气词 + 标点 (语气词后可能再有标点, 如"开始记日记吧。")
+    while True:
+        prev = s
+        for p in _TAIL_PARTICLES:
+            if s.endswith(p):
+                s = s[: -len(p)]
+                break
+        s = s.rstrip(_STRIP_CHARS)
+        if s == prev:
+            break
+    return s
 
 
 def detect(text: str) -> Intent:
-    """识别文本意图。消息过长直接判 DIARY(符合"零门槛写日记"诉求)。"""
+    """识别文本意图。
+
+    优先级 (高 → 低):
+    1. 切换短语子串匹配 (任意长度): "开始记日记"/"开始记录"等 → START_DIARY
+    2. 长消息 (> MAX_COMMAND_LEN) 默认 DIARY
+    3. 短消息走完整词集匹配 (FINALIZE/UNDO/HELP/START_DIARY/CHAT)
+    """
     if not text:
         return Intent.DIARY
+
+    # 优先级 1: 任意长度的切换意图子串匹配
+    for phrase in _START_DIARY_PHRASES:
+        if phrase in text:
+            return Intent.START_DIARY
+
+    # 优先级 2: 长消息默认 DIARY
     if len(text) > MAX_COMMAND_LEN:
         return Intent.DIARY
+
+    # 优先级 3: 短消息词集精确匹配
     norm = _normalize(text)
     if norm in _FINALIZE_KEYWORDS:
         return Intent.FINALIZE
