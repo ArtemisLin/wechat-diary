@@ -18,6 +18,7 @@ class Intent(Enum):
     UNDO = "undo"             # 撤回上一段
     HELP = "help"             # 看帮助
     CHAT = "chat"             # 闲聊招呼(短消息且命中招呼词, 不写日记只回应)
+    START_DIARY = "start_diary"  # chat 模式下显式进入记录模式
 
 
 # 规则关键词(精确匹配完整消息去除标点后)
@@ -32,6 +33,13 @@ _CHAT_GREETING_KEYWORDS = {
     "在吗", "在么", "在不在", "在嘛", "喂",
     "我来啦", "我来了", "来啦", "我来",
     "早", "早安", "早上好", "中午好", "下午好", "晚上好",
+}
+
+# Phase Agent Mode: 显式进入 diary 模式 (在 chat 模式下生效)
+_START_DIARY_KEYWORDS = {
+    "开始记日记", "开始记录", "记日记", "开始", "开始写",
+    "我要记日记", "我要写日记", "我要记录",
+    "可以记日记吗", "可以开始吗", "记一下",
 }
 
 
@@ -58,6 +66,8 @@ def detect(text: str) -> Intent:
         return Intent.UNDO
     if norm in _HELP_KEYWORDS:
         return Intent.HELP
+    if norm in _START_DIARY_KEYWORDS:
+        return Intent.START_DIARY
     if norm in _CHAT_GREETING_KEYWORDS:
         return Intent.CHAT
     return Intent.DIARY

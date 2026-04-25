@@ -73,3 +73,18 @@ def test_diary_words_not_chat():
     assert detect("今天") == Intent.DIARY
     assert detect("今晚") == Intent.DIARY
     assert detect("吃了") == Intent.DIARY
+
+
+def test_start_diary_keywords():
+    for t in [
+        "开始记日记", "开始记录", "记日记", "开始", "我要记日记",
+        "可以记日记吗", "记一下", "开始写", "开始记日记。", "  开始 ",
+    ]:
+        assert detect(t) == Intent.START_DIARY, f"failed: {t!r}"
+
+
+def test_start_diary_not_misclassified():
+    """长一点的句子含"开始"不应误判为 START_DIARY。"""
+    assert detect("今天工作开始得很早") == Intent.DIARY
+    # "我要记日记" 短而精确, 仍走 START_DIARY (这是对的)
+    assert detect("我要记日记") == Intent.START_DIARY
