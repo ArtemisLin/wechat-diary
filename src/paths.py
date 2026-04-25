@@ -16,6 +16,7 @@ WELCOMED_USERS = DATA_DIR / "welcomed_users.json"
 ILINK_LOG = LOGS_DIR / "ilink.log"
 AI_LOG = LOGS_DIR / "ai.log"
 SESSION_STATE = DATA_DIR / "session_state.json"
+USER_PROFILES = DATA_DIR / "user_profiles.json"
 
 
 def ensure_dirs() -> None:
