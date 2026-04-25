@@ -13,8 +13,8 @@ import config
 import diary_writer
 import users
 
-REMIND_TEXT_1 = "今天还没写日记哦,现在说几句?"
-REMIND_TEXT_2 = "快睡了,还要不要留几句给今天?"
+REMIND_TEXT_1 = "今天还没记呢~ 想记的话发「开始记日记」就开始 📖"
+REMIND_TEXT_2 = "快睡了, 还要不要留几句给今天? 发「开始记日记」开始记录"
 
 
 def check_and_remind(user_id: str, text: str, send_fn: Callable[[str, str], bool]) -> bool:
