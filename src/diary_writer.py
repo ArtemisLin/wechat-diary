@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import socket
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -202,34 +203,79 @@ def today_has_content(user_id: str) -> bool:
 
 
 def count_blocks(path: Path) -> int:
-    """当前文件有多少段(按时间戳行数)。"""
+    """当前文件有多少时间戳段头 (legacy: 按 \\n** 出现次数)。
+
+    Phase 0.8 起同分钟会合并段头, 所以"段头数"≠"消息数"。
+    给用户回复"第 N 段"应使用 count_messages, 此函数仅作为外部 API 兼容保留。
+    """
     if not path.exists():
         return 0
     return path.read_text(encoding="utf-8").count("\n**")
+
+
+# Phase 0.8: 时间戳段头正则 (匹配 **HH:MM** 整行)
+_HEADER_RE = re.compile(r"\*\*(\d{1,2}:\d{2})\*\*")
+
+
+def _last_header_time(content: str) -> str | None:
+    """文件中最后一个时间戳段头的 HH:MM, 没有则 None。"""
+    matches = _HEADER_RE.findall(content)
+    return matches[-1] if matches else None
+
+
+def _is_message_block(stripped: str) -> bool:
+    """判断一个 \\n\\n 分隔出的块是否是"用户消息"块 (而非 header / 段头 / 分隔 / 尾注)。"""
+    if not stripped:
+        return False
+    if stripped.startswith("# "):
+        return False  # 日期 header
+    if _HEADER_RE.fullmatch(stripped):
+        return False  # 段头独占行
+    if stripped.startswith("---"):
+        return False  # 分隔线
+    if stripped.startswith("_("):
+        return False  # 封存尾注
+    return True
+
+
+def count_messages(path: Path) -> int:
+    """数文件里的消息条数 (含同分钟合并的多段)。"""
+    if not path.exists():
+        return 0
+    content = path.read_text(encoding="utf-8")
+    return sum(1 for block in content.split("\n\n") if _is_message_block(block.strip()))
 
 
 CLOSING_MARKER = "_(今日封存于"
 
 
 def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
-    """写入日记。返回 (回复文本, 当前段数)。永不抛。"""
+    """写入日记。返回 (回复文本, 当前消息数)。永不抛。
+
+    Phase 0.8: 同分钟连续消息合并到同一段头下, 不再每条都写新 **HH:MM** 段头。
+    """
     text = (text or "").strip()
     if not text:
         return "没听清呢,再说一次?", 0
 
     polished, used_llm, error_kind = polish(text)
     timestamp = config.hhmm_str()
-    new_block = f"\n\n**{timestamp}**\n\n{polished}\n"
 
     try:
         path = _diary_path(user_id)
         if path.exists():
             existing = path.read_text(encoding="utf-8")
+            if _last_header_time(existing) == timestamp:
+                # 同分钟去重: 不写新段头, 仅追加内容
+                new_block = f"\n{polished}\n"
+            else:
+                new_block = f"\n\n**{timestamp}**\n\n{polished}\n"
             _atomic_write(path, existing + new_block)
         else:
             header = f"# {config.today_str()}\n"
+            new_block = f"\n\n**{timestamp}**\n\n{polished}\n"
             _atomic_write(path, header + new_block)
-        n = count_blocks(path)
+        n = count_messages(path)
     except (OSError, ValueError, users.UserNotFoundError) as e:
         print(f"  写日记失败({user_id}): {e}")
         return "这段话我收到了,但写入笔记时出了点问题,稍后再试一次?", 0
@@ -241,19 +287,40 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
 
 
 def undo_last_block(user_id: str) -> bool:
-    """删除当日文件最后一段。返回是否成功删除。
-    空文件/仅有 header 的文件返回 False。"""
+    """删除最后一条消息。返回是否成功删除。
+
+    Phase 0.8: 同分钟可能合并多段, undo 只删最后一段消息;
+    若该消息是其段头下的唯一一段, 顺带删掉孤儿段头。
+    """
     try:
         path = _diary_path(user_id)
         if not path.exists():
             return False
         content = path.read_text(encoding="utf-8")
-        # 从末尾往前找最后一个段头 "\n\n**"
-        idx = content.rfind("\n\n**")
-        if idx < 0:
+        parts = content.split("\n\n")
+
+        # 倒序找最后一个 message 块
+        last_msg_i = -1
+        for i in range(len(parts) - 1, -1, -1):
+            if _is_message_block(parts[i].strip()):
+                last_msg_i = i
+                break
+        if last_msg_i < 0:
             return False
-        # 如果封存尾注在最后一段之后,连尾注一起砍
-        _atomic_write(path, content[:idx])
+
+        new_parts = parts[:last_msg_i]
+        # 清理末尾的孤儿段头 / 空块
+        while new_parts:
+            tail = new_parts[-1].strip()
+            if not tail or _HEADER_RE.fullmatch(tail):
+                new_parts.pop()
+            else:
+                break
+
+        new_content = "\n\n".join(new_parts)
+        if new_content and not new_content.endswith("\n"):
+            new_content += "\n"
+        _atomic_write(path, new_content)
         return True
     except (OSError, ValueError, users.UserNotFoundError) as e:
         print(f"  撤回最后一段失败({user_id}): {e}")

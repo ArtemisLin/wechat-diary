@@ -42,8 +42,11 @@ def test_first_write_creates_file_with_header(setup):
     assert n == 1
 
 
-def test_same_day_appends_preserves_old(setup):
+def test_same_day_appends_preserves_old(setup, monkeypatch):
+    """两次不同分钟的写入: 段头分别独立, 旧内容字节级保留。"""
     config, _, diary_writer, vault = setup
+    hhmm_iter = iter(["14:30", "14:35"])
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: next(hhmm_iter))
     with patch.object(diary_writer, "_call_llm", return_value="第一段"):
         diary_writer.write("u-abc", "第一段原文", is_voice=False)
     path = vault / f"{config.today_str()}.md"
@@ -159,8 +162,11 @@ def test_atomic_write_leaves_no_tmp(setup):
     assert not tmp_files, f"残留 tmp 文件: {tmp_files}"
 
 
-def test_undo_last_block_removes_only_last(setup):
+def test_undo_last_block_removes_only_last(setup, monkeypatch):
+    """两次不同分钟写入后 undo 只删最后段头 + 第二段。"""
     config, _, diary_writer, vault = setup
+    hhmm_iter = iter(["14:30", "14:35"])
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: next(hhmm_iter))
     with patch.object(diary_writer, "_call_llm", side_effect=["第一段", "第二段"]):
         diary_writer.write("u-abc", "a", is_voice=False)
         diary_writer.write("u-abc", "b", is_voice=False)
@@ -213,3 +219,66 @@ def test_finalize_idempotent(setup):
 def test_finalize_no_file_returns_false(setup):
     _, _, diary_writer, _ = setup
     assert not diary_writer.finalize_today("u-abc")
+
+
+# === Phase 0.8 同分钟段头去重测试 ===
+
+def test_same_minute_merges_into_one_header(setup, monkeypatch):
+    """同分钟两条消息共享一个段头, 但消息计数 n 仍递增。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: "14:30")
+    with patch.object(diary_writer, "_call_llm", side_effect=["第一段", "第二段"]):
+        _, n1 = diary_writer.write("u-abc", "a", is_voice=False)
+        _, n2 = diary_writer.write("u-abc", "b", is_voice=False)
+    path = vault / f"{config.today_str()}.md"
+    content = path.read_text(encoding="utf-8")
+    assert content.count("**14:30**") == 1, f"段头应只出现一次, 实际:\n{content}"
+    assert "第一段" in content and "第二段" in content
+    assert n1 == 1
+    assert n2 == 2
+
+
+def test_same_minute_undo_only_last_segment(setup, monkeypatch):
+    """同分钟两段, undo 只删最后一段, 段头和前段保留。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: "14:30")
+    with patch.object(diary_writer, "_call_llm", side_effect=["第一段", "第二段"]):
+        diary_writer.write("u-abc", "a", is_voice=False)
+        diary_writer.write("u-abc", "b", is_voice=False)
+
+    ok = diary_writer.undo_last_block("u-abc")
+    assert ok
+    content = (vault / f"{config.today_str()}.md").read_text(encoding="utf-8")
+    assert "第一段" in content
+    assert "第二段" not in content
+    assert "**14:30**" in content, "段头应保留 (前段还在)"
+
+
+def test_same_minute_undo_lone_segment_removes_header(setup, monkeypatch):
+    """该段头下唯一一段被 undo, 段头一起删 (避免孤儿)。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: "14:30")
+    with patch.object(diary_writer, "_call_llm", return_value="只有一段"):
+        diary_writer.write("u-abc", "a", is_voice=False)
+
+    ok = diary_writer.undo_last_block("u-abc")
+    assert ok
+    content = (vault / f"{config.today_str()}.md").read_text(encoding="utf-8")
+    assert "只有一段" not in content
+    assert "**14:30**" not in content, "孤儿段头应被删除"
+
+
+def test_count_messages_independent_of_header_merge(setup, monkeypatch):
+    """count_messages 数实际消息条数, 不受段头合并影响。"""
+    config, _, diary_writer, vault = setup
+    # 三条同分钟 + 一条不同分钟 = 4 条消息, 但只有 2 个段头
+    times = iter(["14:30", "14:30", "14:30", "14:35"])
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: next(times))
+    with patch.object(diary_writer, "_call_llm", side_effect=["m1", "m2", "m3", "m4"]):
+        for i in range(4):
+            diary_writer.write("u-abc", f"msg{i}", is_voice=False)
+    path = vault / f"{config.today_str()}.md"
+    content = path.read_text(encoding="utf-8")
+    assert content.count("**14:30**") == 1
+    assert content.count("**14:35**") == 1
+    assert diary_writer.count_messages(path) == 4
