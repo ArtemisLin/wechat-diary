@@ -60,12 +60,59 @@ def test_same_day_appends_preserves_old(setup):
 
 
 def test_llm_failure_falls_back_to_raw(setup):
+    """LLM 抛网络错误 → 原文回落 + 微信回复带"AI 暂时不通"提示。"""
     _, _, diary_writer, vault = setup
-    with patch.object(diary_writer, "_call_llm", return_value=None):
+    with patch.object(diary_writer, "_call_llm",
+                      side_effect=diary_writer.LLMError("network", "timeout")):
         reply, _ = diary_writer.write("u-abc", "原文本身就挺好", is_voice=False)
     content = next(vault.glob("*.md")).read_text(encoding="utf-8")
     assert "原文本身就挺好" in content
-    assert "网络波动" in reply
+    assert "AI 暂时不通" in reply or "原文已存" in reply
+
+
+def test_llm_auth_error_gives_specific_hint(setup):
+    """401 → 微信回复带"AI Key 好像不对"。"""
+    _, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm",
+                      side_effect=diary_writer.LLMError("auth")):
+        reply, _ = diary_writer.write("u-abc", "今天累", is_voice=False)
+    assert "Key" in reply or ".env" in reply
+
+
+def test_llm_balance_error_gives_specific_hint(setup):
+    """402 → 微信回复带"AI 余额用完啦"。"""
+    _, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm",
+                      side_effect=diary_writer.LLMError("balance")):
+        reply, _ = diary_writer.write("u-abc", "今天累", is_voice=False)
+    assert "余额" in reply or "充值" in reply
+
+
+def test_llm_rate_limit_error_gives_specific_hint(setup):
+    """429 → 微信回复带"AI 调用太频繁"。"""
+    _, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm",
+                      side_effect=diary_writer.LLMError("rate_limit")):
+        reply, _ = diary_writer.write("u-abc", "今天累", is_voice=False)
+    assert "频繁" in reply or "rate" in reply.lower()
+
+
+def test_llm_server_error_gives_specific_hint(setup):
+    """5xx → 微信回复带"AI 服务异常"。"""
+    _, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm",
+                      side_effect=diary_writer.LLMError("server")):
+        reply, _ = diary_writer.write("u-abc", "今天累", is_voice=False)
+    assert "服务" in reply or "异常" in reply
+
+
+def test_llm_no_key_error_gives_specific_hint(setup):
+    """没配 AI Key → 微信回复带"没配 AI Key"。"""
+    _, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm",
+                      side_effect=diary_writer.LLMError("no_key")):
+        reply, _ = diary_writer.write("u-abc", "今天累", is_voice=False)
+    assert "Key" in reply
 
 
 def test_empty_text_returns_friendly_message(setup):

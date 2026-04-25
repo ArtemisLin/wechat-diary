@@ -73,10 +73,49 @@ _PROXY_OPENER = (
 )
 
 
-def _call_llm(prompt: str, timeout: int = 15) -> str | None:
-    """调 DeepSeek。成功返回文本,任何失败返回 None(由调用方决定回落策略)。"""
+# Phase 0.7: 错误分类 → 微信回复差异化提示
+class LLMError(Exception):
+    """LLM 调用失败, kind 表示错误类别 (供 polish 上层做差异化提示)。"""
+
+    def __init__(self, kind: str, detail: str = ""):
+        super().__init__(f"{kind}: {detail}" if detail else kind)
+        self.kind = kind  # one of: auth / balance / rate_limit / network / server / other / no_key
+
+
+def _classify_error(e: Exception) -> str:
+    """把底层异常映射到错误类别。"""
+    if isinstance(e, HTTPError):
+        if e.code == 401:
+            return "auth"
+        if e.code == 402:
+            return "balance"
+        if e.code == 429:
+            return "rate_limit"
+        if 500 <= e.code < 600:
+            return "server"
+        return "other"
+    if isinstance(e, (URLError, socket.timeout)):
+        return "network"
+    return "other"  # KeyError / JSONDecodeError / ValueError / OSError 等
+
+
+# 写日记时根据 LLM 错误类别给用户的友好提示 (用于 write 函数 net_note 拼接)
+NET_NOTE_BY_KIND: dict[str | None, str] = {
+    None: "",
+    "auth": " (AI Key 好像不对呢, 检查下 .env, 原文已存)",
+    "balance": " (AI 余额用完啦, 充值后试试, 原文已存)",
+    "rate_limit": " (AI 调用太频繁, 原文已存)",
+    "network": " (AI 暂时不通, 原文已存)",
+    "server": " (AI 服务异常, 原文已存)",
+    "other": " (AI 出了点小问题, 原文已存)",
+    "no_key": " (没配 AI Key, 原文已存)",
+}
+
+
+def _call_llm(prompt: str, timeout: int = 15) -> str:
+    """调 DeepSeek。成功返回文本; 失败抛 LLMError(kind=...)。"""
     if not config.AI_API_KEY:
-        return None
+        raise LLMError("no_key")
     payload = {
         "model": config.AI_MODEL,
         "messages": [{"role": "user", "content": prompt}],
@@ -98,28 +137,40 @@ def _call_llm(prompt: str, timeout: int = 15) -> str | None:
     elif AI_PROXY_MODE == "auto" and _PROXY_OPENER:
         openers.append(("proxy", _PROXY_OPENER))
 
+    last_kind = "other"
+    last_detail = ""
     for transport, opener in openers:
         try:
             with opener.open(req, timeout=timeout) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
             return data["choices"][0]["message"]["content"].strip()
         except (HTTPError, URLError, socket.timeout, KeyError, json.JSONDecodeError, ValueError, OSError) as e:
-            _AI_LOG.warning(f"{transport} call_failed: {type(e).__name__}: {e}")
+            last_kind = _classify_error(e)
+            last_detail = f"{type(e).__name__}: {e}"
+            _AI_LOG.warning(f"{transport} call_failed [{last_kind}]: {last_detail}")
             continue
-    _AI_LOG.warning("all transports exhausted, LLM call returned None")
-    return None
+    _AI_LOG.warning(f"all transports exhausted, last_kind={last_kind}")
+    raise LLMError(last_kind, last_detail)
 
 
-def polish(raw_text: str) -> tuple[str, bool]:
-    """润色文本。返回 (text, used_llm)。LLM 失败时返回原文 + False。"""
+def polish(raw_text: str) -> tuple[str, bool, str | None]:
+    """润色文本。返回 (text, used_llm, error_kind)。LLM 失败时返回原文 + False + kind。
+
+    error_kind: None=成功; 否则 LLMError.kind 之一 (auth/balance/rate_limit/
+    network/server/other/no_key), 供 write 选择友好提示文案。
+    """
     raw_text = raw_text.strip()
     if not raw_text:
-        return raw_text, False
+        return raw_text, False, None
     prompt = POLISH_PROMPT.format(raw_text=raw_text)
-    polished = _call_llm(prompt)
+    try:
+        polished = _call_llm(prompt)
+    except LLMError as e:
+        return raw_text, False, e.kind
     if polished:
-        return polished, True
-    return raw_text, False
+        return polished, True, None
+    # _call_llm 成功但返回空字符串 (理论上 .strip() 后还是空), 当作 other 错误
+    return raw_text, False, "other"
 
 
 def _diary_path(user_id: str) -> Path:
@@ -166,7 +217,7 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
     if not text:
         return "没听清呢,再说一次?", 0
 
-    polished, used_llm = polish(text)
+    polished, used_llm, error_kind = polish(text)
     timestamp = config.hhmm_str()
     new_block = f"\n\n**{timestamp}**\n\n{polished}\n"
 
@@ -184,7 +235,7 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
         return "这段话我收到了,但写入笔记时出了点问题,稍后再试一次?", 0
 
     voice_mark = "🎤 " if is_voice else ""
-    net_note = "" if used_llm else " (网络波动,原文已存)"
+    net_note = "" if used_llm else NET_NOTE_BY_KIND.get(error_kind, NET_NOTE_BY_KIND["other"])
     reply = f"{voice_mark}已存入今天笔记(第 {n} 段) ✍️{net_note}\n继续说,或发「结束」收尾"
     return reply, n
 
