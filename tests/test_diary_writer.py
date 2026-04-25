@@ -37,7 +37,7 @@ def test_first_write_creates_file_with_header(setup):
     assert content.startswith(f"# {config.today_str()}\n")
     assert "今天吃了面" in content
     assert "✍️" in reply
-    assert "已存入今天笔记" in reply
+    assert "记下来啦" in reply or "记下" in reply
     assert "继续说" in reply or "结束" in reply
     assert n == 1
 

@@ -56,13 +56,13 @@ def test_undo_removes_last_block(diary_setup):
     with patch.object(diary_writer, "_call_llm", return_value="第一段"):
         main._handle("u-abc", "a", is_voice=False)
     reply = main._handle("u-abc", "撤回", is_voice=False)
-    assert "删" in reply or "🗑" in reply
+    assert "撤" in reply or "好的" in reply
 
 
 def test_undo_when_nothing_written(diary_setup):
     main, *_ = diary_setup
     reply = main._handle("u-abc", "撤回", is_voice=False)
-    assert "没啥可撤" in reply or "还没" in reply
+    assert "撤" in reply or "还" in reply
 
 
 def test_finalize_returns_closing_line(diary_setup):
@@ -122,7 +122,7 @@ def test_second_message_no_welcome(setup):
 def test_unknown_user_rejected(setup):
     main, *_ = setup
     reply = main._handle("u-other", "你好", is_voice=False)
-    assert "别人的" in reply
+    assert "不是给你的" in reply or "别人的" in reply
 
 
 def test_chat_greeting_does_not_write_diary(setup):

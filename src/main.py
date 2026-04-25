@@ -30,7 +30,7 @@ NUDGE_EVERY = 4  # 每 4 段追加一次劝收尾
 def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
     """主业务路由, 双模式 (chat / diary) 感知。"""
     if user_id != config.USER_ID:
-        return "这个日记本是别人的, 抱歉~"
+        return "嗯? 这个日记本不是给你的呢"
 
     # 跨天自动 reset; 拿到当前模式
     session = session_state.load_or_reset(user_id)
@@ -44,11 +44,11 @@ def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
     if session.mode == "diary":
         if intent is Intent.UNDO:
             ok = diary_writer.undo_last_block(user_id)
-            return "已删掉最后一段 🗑️" if ok else "今天还没记东西, 没啥可撤的 🤔"
+            return "好的, 帮你撤回啦" if ok else "今天还什么都没说呢, 没东西可撤哦"
         if intent is Intent.FINALIZE:
             ok = diary_writer.finalize_today(user_id)
             if not ok:
-                return "今天还没写东西呢, 说一句吧?"
+                return "今天还没说话呢, 要不先说两句吧?"
             session_state.exit_diary(user_id)
             chat_handler.reset_history(user_id)
             return welcome.random_closing()

@@ -257,7 +257,7 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
     """
     text = (text or "").strip()
     if not text:
-        return "没听清呢,再说一次?", 0
+        return "嗯? 没听清, 再说一次?", 0
 
     polished, used_llm, error_kind = polish(text)
     timestamp = config.hhmm_str()
@@ -282,11 +282,11 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
         _AI_LOG.error(f"diary write failed for {user_id}: {type(e).__name__}: {e}")
         if isinstance(e, OSError) and e.errno == errno.ENOSPC:
             return "存日记失败! 磁盘可能满了 💾 请检查 DIARY_DIR 所在盘", 0
-        return "这段话我收到了,但写入笔记时出了点问题,稍后再试一次?", 0
+        return "收到啦, 但写入时出了点问题, 等会儿再试试?", 0
 
     voice_mark = "🎤 " if is_voice else ""
     net_note = "" if used_llm else NET_NOTE_BY_KIND.get(error_kind, NET_NOTE_BY_KIND["other"])
-    reply = f"{voice_mark}已存入今天笔记(第 {n} 段) ✍️{net_note}\n继续说,或发「结束」收尾"
+    reply = f"{voice_mark}嗯, 记下来啦~ 这是今天第 {n} 段 ✍️{net_note}\n继续说, 或发「结束」收尾"
     return reply, n
 
 
