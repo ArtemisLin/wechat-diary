@@ -65,13 +65,14 @@ AI_API_KEY=
 # 先跑 `python src/ilink.py login` 拿到,再回填这里
 USER_ID=
 
-# Obsidian vault 的绝对路径(目录不存在会自动创建)
+# 日记存放目录的绝对路径(目录不存在会自动创建)
+# 用 Obsidian 的话, 填你的 vault 路径; 不用 Obsidian 的话, 任意目录都行
 # 示例:
 #   Windows: D:/Obsidian/MyDiary  或  C:/Users/<你的用户名>/Documents/MyDiary
 #   macOS:   /Users/<你的用户名>/Documents/MyDiary
 #   Linux:   /home/<你的用户名>/obsidian/MyDiary
 # 想手机也能同步看: 放到 OneDrive / iCloud / Dropbox 等云盘同步目录下
-VAULT_DIR=
+DIARY_DIR=
 
 # === 可选(默认就够用) ===
 AI_BASE_URL=https://api.deepseek.com/chat/completions
@@ -123,7 +124,7 @@ python main.py
 
 ## 验收流程
 
-1. **基本写入**:在微信对 bot 发语音"今天天气不错" → Agent 回 `🎤 记下啦 ✍️ 今天第 1 段` → 去 `VAULT_DIR` 看到当天 md 文件,内容已润色
+1. **基本写入**:在微信对 bot 发语音"今天天气不错" → Agent 回 `🎤 记下啦 ✍️ 今天第 1 段` → 去 `DIARY_DIR` 看到当天 md 文件,内容已润色
 2. **同日追加**:再说一段 → 回 `🎤 记下啦 ✍️ 今天第 2 段` → 同文件尾追加,旧段原样保留
 3. **LLM 故障**:临时把 `AI_API_KEY` 改错,发一段 → 回复带 `(网络波动,原文已存)`,文件里是原始转写
 4. **提醒**:临时把 `.env` 里 `REMIND_HOUR_1` 改成马上要到的那个小时,重启 → 到点收到微信提醒
@@ -186,7 +187,7 @@ wechat-diary/
 
 | 现在 | 扩展只改这里 |
 |------|-----------|
-| `.env` 读 `USER_ID` / `VAULT_DIR` | `users.py` 改成从 `users.json` 或 SQLite 加载 |
+| `.env` 读 `USER_ID` / `DIARY_DIR` | `users.py` 改成从 `users.json` 或 SQLite 加载 |
 | `users.load(user_id)` 只接受 env 中的 ID | 扩展 `users.load` 内部实现 |
 | `users.all_active()` 返回单个 ID | 返回多个 |
 

@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 def setup(monkeypatch, tmp_path):
     state_file = tmp_path / "session_state.json"
     monkeypatch.setenv("USER_ID", "u-abc")
-    monkeypatch.setenv("VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("DIARY_DIR", str(tmp_path / "vault"))
     monkeypatch.setenv("TIMEZONE", "Asia/Shanghai")
     import config, paths, session_state
     importlib.reload(config)

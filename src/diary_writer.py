@@ -177,7 +177,7 @@ def polish(raw_text: str) -> tuple[str, bool, str | None]:
 
 def _diary_path(user_id: str) -> Path:
     user = users.load(user_id)
-    return user.vault_dir / f"{config.today_str()}.md"
+    return user.diary_dir / f"{config.today_str()}.md"
 
 
 def _atomic_write(path: Path, content: str) -> None:

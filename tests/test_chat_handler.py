@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 @pytest.fixture
 def setup(monkeypatch, tmp_path):
     monkeypatch.setenv("USER_ID", "u-abc")
-    monkeypatch.setenv("VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("DIARY_DIR", str(tmp_path / "vault"))
     monkeypatch.setenv("AI_API_KEY", "fake-key")
     monkeypatch.setenv("AI_BASE_URL", "https://example.com/chat")
     monkeypatch.setenv("AI_MODEL", "deepseek-v4-flash")

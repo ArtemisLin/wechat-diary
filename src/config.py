@@ -61,9 +61,9 @@ AI_API_KEY = os.environ.get("AI_API_KEY", "")
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://api.deepseek.com/chat/completions")
 AI_MODEL = os.environ.get("AI_MODEL", "deepseek-chat")
 
-# === 用户 / vault ===
+# === 用户 / 日记目录 ===
 USER_ID = os.environ.get("USER_ID", "")
-VAULT_DIR = os.environ.get("VAULT_DIR", "")
+DIARY_DIR = os.environ.get("DIARY_DIR", "")
 
 # === 提醒时间 ===
 REMIND_HOUR_1 = int(os.environ.get("REMIND_HOUR_1", "22"))

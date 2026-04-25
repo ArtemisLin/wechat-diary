@@ -19,7 +19,7 @@ def setup(monkeypatch, tmp_path):
     vault = tmp_path / "vault"
     state_file = tmp_path / "session_state.json"
     monkeypatch.setenv("USER_ID", "u-abc")
-    monkeypatch.setenv("VAULT_DIR", str(vault))
+    monkeypatch.setenv("DIARY_DIR", str(vault))
     monkeypatch.setenv("TIMEZONE", "Asia/Shanghai")
     monkeypatch.setenv("AI_API_KEY", "fake-key")
     import config, users, diary_writer, welcome_store, paths, session_state, chat_handler, main

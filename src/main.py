@@ -111,8 +111,8 @@ def main() -> int:
     if not config.USER_ID:
         print("  .env 未配置 USER_ID,请填 ilink 登录时返回的 ilink_user_id")
         return 1
-    if not config.VAULT_DIR:
-        print("  .env 未配置 VAULT_DIR")
+    if not config.DIARY_DIR:
+        print("  .env 未配置 DIARY_DIR")
         return 1
     if not config.AI_API_KEY:
         print("  ⚠️  AI_API_KEY 未配置,LLM 润色失效,会回落到原文写入")
@@ -132,7 +132,7 @@ def main() -> int:
     print("\n=== wechat-diary 已启动 ===")
     print(f"  时区: {config.TIMEZONE}")
     print(f"  提醒: {config.REMIND_HOUR_1}:00 / {config.REMIND_HOUR_2}:00")
-    print(f"  vault: {config.VAULT_DIR}")
+    print(f"  diary: {config.DIARY_DIR}")
     print(f"  user: {config.USER_ID[:20]}...")
     print(f"  已欢迎: {'是' if welcome_store.is_welcomed(config.USER_ID) else '否(首次消息时前置欢迎)'}")
     print()

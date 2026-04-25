@@ -1,6 +1,6 @@
 """用户配置加载。
 
-第一版单用户实现:从 env 读 USER_ID + VAULT_DIR,组装成 UserConfig。
+第一版单用户实现:从 env 读 USER_ID + DIARY_DIR,组装成 UserConfig。
 未来多用户:改为读 users.json / SQLite,load(user_id) 接口不变。
 
 **核心契约**:任何涉及"谁"的函数都必须接 user_id 参数,
@@ -18,7 +18,7 @@ import config
 @dataclass(frozen=True)
 class UserConfig:
     user_id: str
-    vault_dir: Path
+    diary_dir: Path
 
 
 class UserNotFoundError(KeyError):
@@ -31,11 +31,11 @@ def load(user_id: str) -> UserConfig:
         raise UserNotFoundError("user_id is empty")
     if user_id != config.USER_ID:
         raise UserNotFoundError(f"unknown user_id: {user_id}")
-    if not config.VAULT_DIR:
-        raise ValueError("VAULT_DIR not configured in .env")
-    vault = Path(config.VAULT_DIR)
-    vault.mkdir(parents=True, exist_ok=True)
-    return UserConfig(user_id=user_id, vault_dir=vault)
+    if not config.DIARY_DIR:
+        raise ValueError("DIARY_DIR not configured in .env")
+    diary = Path(config.DIARY_DIR)
+    diary.mkdir(parents=True, exist_ok=True)
+    return UserConfig(user_id=user_id, diary_dir=diary)
 
 
 def all_active() -> Iterable[str]:
