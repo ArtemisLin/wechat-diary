@@ -8,6 +8,7 @@
 """
 from __future__ import annotations
 
+import errno
 import json
 import os
 import re
@@ -278,6 +279,9 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
         n = count_messages(path)
     except (OSError, ValueError, users.UserNotFoundError) as e:
         print(f"  写日记失败({user_id}): {e}")
+        _AI_LOG.error(f"diary write failed for {user_id}: {type(e).__name__}: {e}")
+        if isinstance(e, OSError) and e.errno == errno.ENOSPC:
+            return "存日记失败! 磁盘可能满了 💾 请检查 DIARY_DIR 所在盘", 0
         return "这段话我收到了,但写入笔记时出了点问题,稍后再试一次?", 0
 
     voice_mark = "🎤 " if is_voice else ""

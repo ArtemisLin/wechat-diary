@@ -268,6 +268,36 @@ def test_same_minute_undo_lone_segment_removes_header(setup, monkeypatch):
     assert "**14:30**" not in content, "孤儿段头应被删除"
 
 
+def test_disk_full_returns_specific_alert(setup, monkeypatch):
+    """OSError(ENOSPC) → 微信回复"磁盘可能满了"特定告警, 不是通用错误。"""
+    import errno
+    _, _, diary_writer, _ = setup
+
+    def boom(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    with patch.object(diary_writer, "_call_llm", return_value="x"):
+        with patch.object(diary_writer, "_atomic_write", side_effect=boom):
+            reply, n = diary_writer.write("u-abc", "x", is_voice=False)
+    assert n == 0
+    assert "磁盘" in reply or "DIARY_DIR" in reply, f"应给磁盘满特定提示, 实际: {reply!r}"
+
+
+def test_other_oserror_returns_generic_message(setup):
+    """非 ENOSPC 的 OSError → 通用提示, 不混淆为磁盘满。"""
+    _, _, diary_writer, _ = setup
+
+    def boom(*args, **kwargs):
+        raise OSError("permission denied")  # errno=None / 其他错误
+
+    with patch.object(diary_writer, "_call_llm", return_value="x"):
+        with patch.object(diary_writer, "_atomic_write", side_effect=boom):
+            reply, n = diary_writer.write("u-abc", "x", is_voice=False)
+    assert n == 0
+    assert "磁盘" not in reply, f"非磁盘满错误不该提磁盘, 实际: {reply!r}"
+    assert "稍后再试" in reply or "出了点问题" in reply
+
+
 def test_count_messages_independent_of_header_merge(setup, monkeypatch):
     """count_messages 数实际消息条数, 不受段头合并影响。"""
     config, _, diary_writer, vault = setup
