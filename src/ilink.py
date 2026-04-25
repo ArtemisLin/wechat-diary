@@ -503,6 +503,19 @@ def run_loop(state: dict, on_message) -> str:
         return "keyboard_interrupt"
 
 
+def _status_to_exit_code(probe: str) -> int:
+    """status 命令的 exit code 映射:
+    0 = ok (网络通且 session 健康)
+    2 = network (网络降级, 但 session 仍可沿用启动)
+    1 = 其他 (session 失效, 需重新登录)
+    """
+    if probe == "ok":
+        return 0
+    if probe == "network":
+        return 2
+    return 1
+
+
 def _status_cli(state: dict) -> int:
     if not state.get("bot_token"):
         print("  未登录，运行: python ilink.py login")
@@ -516,9 +529,7 @@ def _status_cli(state: dict) -> int:
     print(f"  proxy_mode: {_proxy_status_text()}")
     print(f"  active_transport: {_ACTIVE_TRANSPORT}")
     print(f"  探活: {probe}")
-    if probe in {"ok", "network"}:
-        return 0
-    return 1
+    return _status_to_exit_code(probe)
 
 
 def _cli() -> int:

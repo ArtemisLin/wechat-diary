@@ -107,6 +107,12 @@ cd src
 set "STATUS_EXIT=%errorlevel%"
 cd ..
 if "%STATUS_EXIT%"=="0" exit /b 0
+if "%STATUS_EXIT%"=="2" (
+    echo.
+    echo   Network temporarily unreachable - using last session
+    echo.
+    exit /b 0
+)
 
 echo.
 echo   Local session invalid - re-login required
