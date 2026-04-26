@@ -148,7 +148,13 @@ def main() -> int:
     print(f"  提醒: {config.REMIND_HOUR_1}:00 / {config.REMIND_HOUR_2}:00")
     print(f"  diary: {config.DIARY_DIR}")
     print(f"  user: {config.USER_ID[:20]}...")
-    print(f"  已欢迎: {'是' if welcome_store.is_welcomed(config.USER_ID) else '否(首次消息时前置欢迎)'}")
+    _profile = user_profile.load(config.USER_ID)
+    _state_label = {
+        "unknown": "首次见面 (会发欢迎致辞 + 问名字)",
+        "awaiting_name": "已欢迎, 等待用户告知名字",
+        "active": f"已激活 (name={_profile.name})",
+    }.get(_profile.state, _profile.state)
+    print(f"  状态: {_state_label}")
     print()
 
     loop_result = ilink.run_loop(state, on_message=_on_message)

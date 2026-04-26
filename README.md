@@ -164,18 +164,23 @@ wechat-diary/
 ├── src/
 │   ├── config.py          # env + 时区工具
 │   ├── paths.py           # data/ 路径集中管理 + 旧文件迁移
+│   ├── logger.py          # RotatingFileHandler 封装
 │   ├── users.py           # 单用户实现(接口预留多用户)
+│   ├── intents.py         # 短消息意图识别
+│   ├── session_state.py   # chat/diary 双模式状态机 + 跨天 reset
+│   ├── chat_handler.py    # chat 模式 LLM 闲聊 + 上下文管理
 │   ├── diary_writer.py    # LLM 润色 + 写 md
 │   ├── ilink.py           # 精简 iLink 客户端(从 017Pet 借鉴)
 │   ├── scheduler.py       # APScheduler 提醒
-│   ├── welcome.py         # 文案 + 欢迎逻辑
-│   ├── welcome_store.py   # 已欢迎用户集合持久化
+│   ├── welcome.py         # 文案 + 欢迎/取名/收尾文案
+│   ├── user_profile.py    # 用户名字 + 状态机持久化
 │   └── main.py            # 入口
 ├── tests/                 # 单测(pytest)
 ├── start.bat              # 双击启动
-├── data/                  # 运行时生成(勿入 git): state/log/已欢迎记录
+├── data/                  # 运行时生成(勿入 git)
 │   ├── ilink_state.json
-│   ├── welcomed_users.json
+│   ├── user_profiles.json
+│   ├── session_state.json
 │   └── logs/
 │       └── ilink.log
 └── .env                   # 密钥(自建,勿入 git)
