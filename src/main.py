@@ -51,7 +51,8 @@ def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
                 return "今天还没说话呢, 要不先说两句吧?"
             session_state.exit_diary(user_id)
             chat_handler.reset_history(user_id)
-            return welcome.random_closing()
+            name = user_profile.get_name(user_id, fallback="")
+            return welcome.random_closing(name=name or None)
         # diary 模式下其他所有意图都当日记记 (包括 CHAT/START_DIARY/默认 DIARY)
         # 注: 用户在 diary 中再说"开始记日记", 就当成日记内容写进去, 不重复进入
         reply, n = diary_writer.write(user_id, text, is_voice)

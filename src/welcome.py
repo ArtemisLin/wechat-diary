@@ -103,9 +103,24 @@ CHAT_GREETING_REPLIES: list[str] = [
 ]
 
 
-def random_closing() -> str:
-    """随机拼接一句仪式感结束语 + 一句"明天见"告别。"""
-    return random.choice(CLOSING_LINES) + "\n\n" + random.choice(CLOSING_FAREWELL_LINES)
+# 带名字的仪式感结束语 (供 random_closing 30% 概率随机抽)
+CLOSING_LINES_WITH_NAME: list[str] = [
+    "辛苦啦{name}~ 今天又记下了一些珍贵的东西 🌙",
+    "{name}, 今天的故事我收好啦, 晚安 ✨",
+    "{name}, 这一页属于今天, 收好了 📖",
+]
+
+
+def random_closing(name: str | None = None) -> str:
+    """随机拼接一句仪式感结束语 + 一句"明天见"告别。
+
+    name 非空时, 30% 概率从 CLOSING_LINES_WITH_NAME 抽 (保留多样性, 避免太腻)。
+    """
+    if name and random.random() < 0.3:
+        head = random.choice(CLOSING_LINES_WITH_NAME).format(name=name)
+    else:
+        head = random.choice(CLOSING_LINES)
+    return head + "\n\n" + random.choice(CLOSING_FAREWELL_LINES)
 
 
 def random_greeting() -> str:

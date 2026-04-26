@@ -20,11 +20,14 @@ def setup(monkeypatch, tmp_path):
     monkeypatch.setenv("AI_API_KEY", "fake-key")
     monkeypatch.setenv("REMIND_HOUR_1", "22")
     monkeypatch.setenv("REMIND_HOUR_2", "23")
-    import config, users, diary_writer, scheduler
+    import config, users, diary_writer, user_profile, scheduler
     importlib.reload(config)
     importlib.reload(users)
     importlib.reload(diary_writer)
+    importlib.reload(user_profile)
     importlib.reload(scheduler)
+    monkeypatch.setattr(user_profile, "PROFILE_FILE", tmp_path / "user_profiles.json")
+    monkeypatch.setattr(user_profile, "LEGACY_FILE", tmp_path / "welcomed_users.json")
     return scheduler, diary_writer, vault
 
 
@@ -113,6 +116,44 @@ def test_reminder_job_iterates_all_active_users(setup):
         calls.append((uid, text))
         return True
 
-    job = scheduler.make_reminder_job("test text", fake_send)
+    # 模板需含 {name} 占位 (新签名)
+    job = scheduler.make_reminder_job("test text {name}", fake_send)
     job()
-    assert calls == [("u-abc", "test text")]
+    assert len(calls) == 1
+    uid, text = calls[0]
+    assert uid == "u-abc"
+    # 未取名 user 默认填"你"
+    assert "你" in text
+
+
+def test_reminder_uses_user_name(setup):
+    """提醒文案应包含用户名字 (active 用户)。"""
+    import user_profile
+    scheduler, _, _ = setup
+    user_profile.mark_welcomed("u-abc")
+    user_profile.set_name("u-abc", "谷雨")
+
+    sent = []
+    def fake_send(uid, text):
+        sent.append((uid, text))
+        return True
+
+    job = scheduler.make_reminder_job(scheduler.REMIND_TEXT_1_TEMPLATE, fake_send)
+    job()
+    assert sent
+    assert "谷雨" in sent[0][1], f"提醒文案应含名字: {sent[0][1]!r}"
+
+
+def test_reminder_falls_back_to_default_for_unnamed(setup):
+    """未取名时提醒文案用 '你'。"""
+    scheduler, _, _ = setup
+
+    sent = []
+    def fake_send(uid, text):
+        sent.append((uid, text))
+        return True
+
+    job = scheduler.make_reminder_job(scheduler.REMIND_TEXT_1_TEMPLATE, fake_send)
+    job()
+    assert sent
+    assert "你" in sent[0][1] or "今天还没记呢" in sent[0][1]
