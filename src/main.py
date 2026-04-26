@@ -116,6 +116,7 @@ def _make_send_fn(state: dict):
 
 def main() -> int:
     paths.migrate_legacy()
+    user_profile.migrate_legacy()
     state = ilink.load_state()
     if not state.get("bot_token"):
         print("  未登录。先运行: python ilink.py login")
