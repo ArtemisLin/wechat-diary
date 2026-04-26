@@ -328,8 +328,17 @@ def login() -> dict | None:
                 return None
             time.sleep(1)
     except KeyboardInterrupt:
-        print("\n  登录流程被本地中断")
-        _log("login interrupted by keyboard")
+        # 调试: 打印完整 traceback, 看 SIGINT 是从哪个 syscall 抛的
+        # (谷雨实测: 没按 Ctrl+C 但仍触发, 怀疑 cmd / Windows / urllib 信号 quirk)
+        print("\n  登录流程被本地中断 [DEBUG: traceback ↓]")
+        traceback.print_exc()
+        _log(f"login interrupted by keyboard:\n{traceback.format_exc()}")
+        return None
+    except BaseException as e:
+        # 顺带 catch 其他基础异常 (SystemExit/GeneratorExit 等), 防止漏过
+        print(f"\n  登录意外退出: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        _log(f"login unexpected exit ({type(e).__name__}): {e}\n{traceback.format_exc()}")
         return None
 
     print("  等待超时(5分钟)，未收到 confirmed")
