@@ -18,23 +18,28 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 def setup(monkeypatch, tmp_path):
     vault = tmp_path / "vault"
     state_file = tmp_path / "session_state.json"
+    profile_file = tmp_path / "user_profiles.json"
     monkeypatch.setenv("USER_ID", "u-abc")
     monkeypatch.setenv("DIARY_DIR", str(vault))
     monkeypatch.setenv("TIMEZONE", "Asia/Shanghai")
     monkeypatch.setenv("AI_API_KEY", "fake-key")
-    import config, users, diary_writer, welcome_store, paths, session_state, chat_handler, main
+    import config, users, diary_writer, user_profile, paths, session_state, chat_handler, main
     importlib.reload(config)
     importlib.reload(users)
     importlib.reload(diary_writer)
-    importlib.reload(welcome_store)
+    importlib.reload(user_profile)
     importlib.reload(paths)
     importlib.reload(session_state)
     importlib.reload(chat_handler)
     importlib.reload(main)
-    monkeypatch.setattr(welcome_store, "STORE_FILE", tmp_path / "welcomed.json")
+    monkeypatch.setattr(user_profile, "PROFILE_FILE", profile_file)
+    monkeypatch.setattr(user_profile, "LEGACY_FILE", tmp_path / "welcomed_users.json")
     monkeypatch.setattr(session_state, "STATE_FILE", state_file)
     chat_handler.reset_history("u-abc")
-    return main, diary_writer, welcome_store, vault
+    # 默认置 active (跳过取名流程, 让旧测试聚焦于路由逻辑)
+    user_profile.mark_welcomed("u-abc")
+    user_profile.set_name("u-abc", "TestUser")
+    return main, diary_writer, user_profile, vault
 
 
 @pytest.fixture
@@ -100,22 +105,12 @@ def test_nudge_every_4_blocks(diary_setup):
     assert "还有吗" not in r5, "第 5 段不再追加"
 
 
-def test_first_message_prepends_welcome(setup):
-    """首次消息: 前置 WELCOME 致辞 + 主回复 (双模式新流程下"你好"走 CHAT)。"""
+def test_active_user_routes_normally(setup):
+    """active 用户消息走主路由 (chat/diary), 不再前置欢迎致辞。"""
     import chat_handler
-    main, diary_writer, welcome_store, _ = setup
-    with patch.object(chat_handler, "_call_chat_llm", return_value="嗨"):
-        reply = main._on_message("u-abc", "你好", is_voice=False)
-    assert "日记 Agent" in reply or "日记小伙计" in reply, "首次消息应前置欢迎致辞"
-    assert welcome_store.is_welcomed("u-abc")
-
-
-def test_second_message_no_welcome(setup):
-    import chat_handler
-    main, diary_writer, welcome_store, _ = setup
-    welcome_store.mark_welcomed("u-abc")
+    main, *_ = setup
     with patch.object(chat_handler, "_call_chat_llm", return_value="reply"):
-        reply = main._on_message("u-abc", "今天", is_voice=False)
+        reply = main._on_message("u-abc", "今天怎样", is_voice=False)
     assert "日记 Agent" not in reply and "日记小伙计" not in reply
 
 
@@ -276,3 +271,71 @@ def test_particle_start_diary_returns_enter_diary_text(setup):
     assert "📖" in reply or "记录模式" in reply or "记今天" in reply, f"未命中 ENTER_DIARY: {reply!r}"
     # 不应含 chat 模式的 token 提示
     assert "token" not in reply
+
+
+# === Cluster A.3 取名流程测试 ===
+
+@pytest.fixture
+def fresh_user_setup(monkeypatch, tmp_path):
+    """全新用户 fixture (state=unknown), 测试取名流程。
+
+    与 setup 不同: setup 直接置 active 跳过取名; 这里保留 unknown 状态。
+    """
+    vault = tmp_path / "vault"
+    state_file = tmp_path / "session_state.json"
+    profile_file = tmp_path / "user_profiles.json"
+    monkeypatch.setenv("USER_ID", "u-abc")
+    monkeypatch.setenv("DIARY_DIR", str(vault))
+    monkeypatch.setenv("TIMEZONE", "Asia/Shanghai")
+    monkeypatch.setenv("AI_API_KEY", "fake-key")
+    import config, users, diary_writer, user_profile, paths, session_state, chat_handler, main
+    importlib.reload(config)
+    importlib.reload(users)
+    importlib.reload(diary_writer)
+    importlib.reload(user_profile)
+    importlib.reload(paths)
+    importlib.reload(session_state)
+    importlib.reload(chat_handler)
+    importlib.reload(main)
+    monkeypatch.setattr(user_profile, "PROFILE_FILE", profile_file)
+    monkeypatch.setattr(user_profile, "LEGACY_FILE", tmp_path / "welcomed_users.json")
+    monkeypatch.setattr(session_state, "STATE_FILE", state_file)
+    chat_handler.reset_history("u-abc")
+    return main, diary_writer, user_profile, vault
+
+
+def test_first_message_asks_name(fresh_user_setup):
+    """首次消息 (state=unknown): bot 问名字, 标记 awaiting_name, 不写日记。"""
+    import chat_handler
+    main, diary_writer, user_profile, vault = fresh_user_setup
+    with patch.object(chat_handler, "_call_chat_llm", return_value="x"):
+        with patch.object(diary_writer, "_call_llm", return_value="x") as mock_llm:
+            reply = main._on_message("u-abc", "你好", is_voice=False)
+    assert "名字" in reply or "叫你什么" in reply, f"应问名字: {reply!r}"
+    p = user_profile.load("u-abc")
+    assert p.state == "awaiting_name"
+    mock_llm.assert_not_called()
+    assert list(vault.glob("*.md")) == []
+
+
+def test_second_message_sets_name(fresh_user_setup):
+    """awaiting_name 状态下用户回复 → 存为名字, 切到 active。"""
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)  # 触发问名字
+    reply = main._on_message("u-abc", "谷雨", is_voice=False)
+    assert "谷雨" in reply, f"应含名字: {reply!r}"
+    p = user_profile.load("u-abc")
+    assert p.state == "active"
+    assert p.name == "谷雨"
+
+
+def test_name_too_long_rejected(fresh_user_setup):
+    """名字 >10 字 → 回提示重发, 状态保留 awaiting_name。"""
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    long_name = "我希望你叫我谷雨可是这个名字有点长"
+    reply = main._on_message("u-abc", long_name, is_voice=False)
+    assert "短一点" in reply or "再发" in reply
+    p = user_profile.load("u-abc")
+    assert p.state == "awaiting_name", "名字太长仍待取名"
+    assert p.name is None

@@ -19,8 +19,8 @@ import diary_writer
 import ilink
 import paths
 import session_state
+import user_profile
 import welcome
-import welcome_store
 from intents import Intent, detect
 
 
@@ -84,14 +84,26 @@ def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
 
 
 def _on_message(user_id: str, text: str, is_voice: bool) -> str | None:
-    """iLink 回调。首次用户前置欢迎。"""
-    if user_id == config.USER_ID and not welcome_store.is_welcomed(user_id):
-        welcome_store.mark_welcomed(user_id)
-        main_reply = _handle(user_id, text, is_voice)
-        # 欢迎 + 主业务回复拼一起,用户一次收到
-        if main_reply:
-            return f"{welcome.WELCOME_TEXT}\n\n———\n\n{main_reply}"
+    """iLink 回调入口。处理首次见面欢迎 + 取名流程, 之后才走主路由。"""
+    if user_id != config.USER_ID:
+        return _handle(user_id, text, is_voice)
+
+    profile = user_profile.load(user_id)
+
+    # 首次见面 (unknown): 发欢迎致辞 + 问名字, 不处理本次消息
+    if profile.state == "unknown":
+        user_profile.mark_welcomed(user_id)
         return welcome.WELCOME_TEXT
+
+    # 等待取名 (awaiting_name): 把本次消息当名字处理
+    if profile.state == "awaiting_name":
+        candidate = text.strip()
+        if not candidate or len(candidate) > welcome.NAME_MAX_LEN:
+            return welcome.NAME_TOO_LONG_HINT
+        user_profile.set_name(user_id, candidate)
+        return welcome.NAME_CONFIRM_TEMPLATE.format(name=candidate)
+
+    # 正常状态 (active): 走主路由
     return _handle(user_id, text, is_voice)
 
 
