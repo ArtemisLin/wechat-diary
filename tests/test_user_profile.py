@@ -66,7 +66,7 @@ def test_get_name_returns_default_for_unnamed(setup):
 
 def test_legacy_migration_from_welcomed_users_json(setup):
     """旧 welcomed_users.json (list) 迁移到 user_profiles.json (dict),
-    name=None, state=awaiting_name (强制重新问一次名字)。"""
+    name=None, state=unknown (下次消息走完整 WELCOME → 取名流程)。"""
     up, profile_file, legacy_file = setup
     legacy_file.parent.mkdir(parents=True, exist_ok=True)
     legacy_file.write_text(json.dumps(["u-abc", "u-other"]), encoding="utf-8")
@@ -78,7 +78,7 @@ def test_legacy_migration_from_welcomed_users_json(setup):
     data = json.loads(profile_file.read_text(encoding="utf-8"))
     assert "u-abc" in data
     assert data["u-abc"]["name"] is None
-    assert data["u-abc"]["state"] == "awaiting_name"
+    assert data["u-abc"]["state"] == "unknown"
 
 
 def test_migration_idempotent(setup):

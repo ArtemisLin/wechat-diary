@@ -113,8 +113,10 @@ def is_welcomed(user_id: str) -> bool:
 def migrate_legacy() -> None:
     """旧 welcomed_users.json (list[str]) 迁移到新格式 (dict)。
 
-    迁移时旧用户置 state=awaiting_name (强制让 bot 主动问一次名字),
-    name=None, welcomed_at 沿用迁移时间。幂等。
+    旧用户置 state=unknown (而非 awaiting_name): 因为 bot 不能主动推欢迎致辞,
+    若直接置 awaiting_name, 老用户下一条消息会被当名字存掉, 用户感受不到流程。
+    置 unknown 后, 下次 _on_message 会走完整流程: 第一条触发 WELCOME (问名字),
+    第二条作为名字。幂等。
     """
     if not LEGACY_FILE.exists():
         return
@@ -127,14 +129,13 @@ def migrate_legacy() -> None:
 
     with _lock:
         data = _read_all()
-        now = config.now_bj().strftime("%Y-%m-%d %H:%M")
         for uid in legacy:
             if uid not in data:
                 data[uid] = {
                     "name": None,
-                    "welcomed_at": now,
+                    "welcomed_at": None,
                     "named_at": None,
-                    "state": "awaiting_name",
+                    "state": "unknown",
                 }
         _write_all(data)
         try:
