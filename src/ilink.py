@@ -33,6 +33,15 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 
 BASE_URL = "https://ilinkai.weixin.qq.com"
+
+# Phase Debug: 实现 README "三重保险" 强制 iLink API 直连
+# 即使 Clash TUN 模式劫持流量, 至少保证 Python urllib 层面不走 proxy。
+# (注: TUN 模式 OS-level 劫持仍无法绕过, 用户需在 Clash 添加直连规则)
+for _proxy_env in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+    os.environ.pop(_proxy_env, None)
+os.environ["NO_PROXY"] = "*"
+os.environ["no_proxy"] = "*"
+
 STATE_FILE = paths.ILINK_STATE
 LOG_FILE = paths.ILINK_LOG
 _LOG = app_logger.get_logger("ilink", LOG_FILE)
@@ -264,17 +273,34 @@ def login() -> dict | None:
     start = time.time()
     poll_count = 0
     last_status = None
+    consecutive_ki = 0  # 连续 SSL 中断 (Windows quirk) 次数, ≥5 才真退出
 
     try:
         while time.time() - start < 300:
             poll_count += 1
             elapsed = int(time.time() - start)
-            resp = _api_request(
-                "GET",
-                f"/ilink/bot/get_qrcode_status?qrcode={qrcode}",
-                headers=headers,
-                timeout=35,
-            )
+            try:
+                resp = _api_request(
+                    "GET",
+                    f"/ilink/bot/get_qrcode_status?qrcode={qrcode}",
+                    headers=headers,
+                    timeout=35,
+                )
+            except KeyboardInterrupt:
+                # Phase Debug: SSL recv 被 OS 网络栈打断, Python 在 Windows 下
+                # 误把它翻译成 KeyboardInterrupt (实际不是用户按 Ctrl+C)。
+                # 当 timeout 处理: 等 1 秒重试, 连续 5 次才真退出。
+                consecutive_ki += 1
+                if consecutive_ki >= 5:
+                    print(f"\n  连续 {consecutive_ki} 次 SSL 中断, 退出登录流程")
+                    raise
+                _log(
+                    f"poll#{poll_count} ssl_interrupted "
+                    f"(consecutive_ki={consecutive_ki}, treated as network glitch)"
+                )
+                time.sleep(1)
+                continue
+            consecutive_ki = 0  # 任何 _api_request 正常返回都 reset
             if not resp:
                 time.sleep(1)
                 continue
