@@ -177,7 +177,10 @@ def polish(raw_text: str) -> tuple[str, bool, str | None]:
 
 def _diary_path(user_id: str) -> Path:
     user = users.load(user_id)
-    return user.diary_dir / f"{config.today_str()}.md"
+    today = config.today_str()
+    year_dir = user.diary_dir / today[:4]
+    year_dir.mkdir(parents=True, exist_ok=True)
+    return year_dir / f"{today}.md"
 
 
 def _atomic_write(path: Path, content: str) -> None:

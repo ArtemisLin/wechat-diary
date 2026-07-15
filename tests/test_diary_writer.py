@@ -27,11 +27,17 @@ def setup(monkeypatch, tmp_path):
     return config, users, diary_writer, vault
 
 
+def _today_path(config, vault: Path) -> Path:
+    """v2 数据契约: DIARY_DIR/YYYY/YYYY-MM-DD.md"""
+    today = config.today_str()
+    return vault / today[:4] / f"{today}.md"
+
+
 def test_first_write_creates_file_with_header(setup):
     config, _, diary_writer, vault = setup
     with patch.object(diary_writer, "_call_llm", return_value="今天吃了面"):
         reply, n = diary_writer.write("u-abc", "嗯今天吃了面", is_voice=False)
-    path = vault / f"{config.today_str()}.md"
+    path = _today_path(config, vault)
     assert path.exists()
     content = path.read_text(encoding="utf-8")
     assert content.startswith(f"# {config.today_str()}\n")
@@ -49,7 +55,7 @@ def test_same_day_appends_preserves_old(setup, monkeypatch):
     monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: next(hhmm_iter))
     with patch.object(diary_writer, "_call_llm", return_value="第一段"):
         diary_writer.write("u-abc", "第一段原文", is_voice=False)
-    path = vault / f"{config.today_str()}.md"
+    path = _today_path(config, vault)
     before = path.read_text(encoding="utf-8")
 
     with patch.object(diary_writer, "_call_llm", return_value="第二段"):
@@ -68,7 +74,7 @@ def test_llm_failure_falls_back_to_raw(setup):
     with patch.object(diary_writer, "_call_llm",
                       side_effect=diary_writer.LLMError("network", "timeout")):
         reply, _ = diary_writer.write("u-abc", "原文本身就挺好", is_voice=False)
-    content = next(vault.glob("*.md")).read_text(encoding="utf-8")
+    content = next(vault.rglob("*.md")).read_text(encoding="utf-8")
     assert "原文本身就挺好" in content
     assert "AI 暂时不通" in reply or "原文已存" in reply
 
@@ -123,7 +129,7 @@ def test_empty_text_returns_friendly_message(setup):
     reply, n = diary_writer.write("u-abc", "   ", is_voice=True)
     assert "再说一次" in reply
     assert n == 0
-    assert not list(vault.glob("*.md")), "空文本不应创建文件"
+    assert not list(vault.rglob("*.md")), "空文本不应创建文件"
 
 
 def test_today_has_content_true_after_write(setup):
@@ -158,7 +164,7 @@ def test_atomic_write_leaves_no_tmp(setup):
     _, _, diary_writer, vault = setup
     with patch.object(diary_writer, "_call_llm", return_value="hi"):
         diary_writer.write("u-abc", "hi", is_voice=False)
-    tmp_files = list(vault.glob("*.tmp"))
+    tmp_files = list(vault.rglob("*.tmp"))
     assert not tmp_files, f"残留 tmp 文件: {tmp_files}"
 
 
@@ -170,7 +176,7 @@ def test_undo_last_block_removes_only_last(setup, monkeypatch):
     with patch.object(diary_writer, "_call_llm", side_effect=["第一段", "第二段"]):
         diary_writer.write("u-abc", "a", is_voice=False)
         diary_writer.write("u-abc", "b", is_voice=False)
-    path = vault / f"{config.today_str()}.md"
+    path = _today_path(config, vault)
     assert path.read_text(encoding="utf-8").count("\n**") == 2
 
     ok = diary_writer.undo_last_block("u-abc")
@@ -188,7 +194,7 @@ def test_undo_when_no_file(setup):
 
 def test_undo_when_only_header(setup, monkeypatch):
     config, _, diary_writer, vault = setup
-    path = vault / f"{config.today_str()}.md"
+    path = _today_path(config, vault)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(f"# {config.today_str()}\n", encoding="utf-8")
     assert not diary_writer.undo_last_block("u-abc")
@@ -200,7 +206,7 @@ def test_finalize_appends_footer(setup):
         diary_writer.write("u-abc", "xx", is_voice=False)
     ok = diary_writer.finalize_today("u-abc")
     assert ok
-    content = (vault / f"{config.today_str()}.md").read_text(encoding="utf-8")
+    content = _today_path(config, vault).read_text(encoding="utf-8")
     assert diary_writer.CLOSING_MARKER in content
     assert content.endswith(")_\n") or content.endswith(")_")
 
@@ -210,9 +216,9 @@ def test_finalize_idempotent(setup):
     with patch.object(diary_writer, "_call_llm", return_value="段落"):
         diary_writer.write("u-abc", "xx", is_voice=False)
     diary_writer.finalize_today("u-abc")
-    content1 = (vault / f"{config.today_str()}.md").read_text(encoding="utf-8")
+    content1 = _today_path(config, vault).read_text(encoding="utf-8")
     diary_writer.finalize_today("u-abc")
-    content2 = (vault / f"{config.today_str()}.md").read_text(encoding="utf-8")
+    content2 = _today_path(config, vault).read_text(encoding="utf-8")
     assert content1 == content2, "第二次 finalize 不应再追加"
 
 
@@ -230,7 +236,7 @@ def test_same_minute_merges_into_one_header(setup, monkeypatch):
     with patch.object(diary_writer, "_call_llm", side_effect=["第一段", "第二段"]):
         _, n1 = diary_writer.write("u-abc", "a", is_voice=False)
         _, n2 = diary_writer.write("u-abc", "b", is_voice=False)
-    path = vault / f"{config.today_str()}.md"
+    path = _today_path(config, vault)
     content = path.read_text(encoding="utf-8")
     assert content.count("**14:30**") == 1, f"段头应只出现一次, 实际:\n{content}"
     assert "第一段" in content and "第二段" in content
@@ -248,7 +254,7 @@ def test_same_minute_undo_only_last_segment(setup, monkeypatch):
 
     ok = diary_writer.undo_last_block("u-abc")
     assert ok
-    content = (vault / f"{config.today_str()}.md").read_text(encoding="utf-8")
+    content = _today_path(config, vault).read_text(encoding="utf-8")
     assert "第一段" in content
     assert "第二段" not in content
     assert "**14:30**" in content, "段头应保留 (前段还在)"
@@ -263,7 +269,7 @@ def test_same_minute_undo_lone_segment_removes_header(setup, monkeypatch):
 
     ok = diary_writer.undo_last_block("u-abc")
     assert ok
-    content = (vault / f"{config.today_str()}.md").read_text(encoding="utf-8")
+    content = _today_path(config, vault).read_text(encoding="utf-8")
     assert "只有一段" not in content
     assert "**14:30**" not in content, "孤儿段头应被删除"
 
@@ -307,8 +313,55 @@ def test_count_messages_independent_of_header_merge(setup, monkeypatch):
     with patch.object(diary_writer, "_call_llm", side_effect=["m1", "m2", "m3", "m4"]):
         for i in range(4):
             diary_writer.write("u-abc", f"msg{i}", is_voice=False)
-    path = vault / f"{config.today_str()}.md"
+    path = _today_path(config, vault)
     content = path.read_text(encoding="utf-8")
     assert content.count("**14:30**") == 1
     assert content.count("**14:35**") == 1
     assert diary_writer.count_messages(path) == 4
+
+
+# === Cluster B.1: 按年分目录测试 ===
+
+def test_diary_path_uses_yearly_subdir(setup):
+    """新写入文件应在 YYYY/ 子目录下。"""
+    config, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm", return_value="x"):
+        diary_writer.write("u-abc", "x", is_voice=False)
+    today = config.today_str()        # "2026-04-30"
+    year = today[:4]                   # "2026"
+    expected = vault / year / f"{today}.md"
+    assert expected.exists(), f"应在年份子目录: 实际 vault 内容 {list(vault.rglob('*'))}"
+
+
+def test_today_has_content_reads_yearly_subdir(setup):
+    """today_has_content 也要走新路径。"""
+    _, _, diary_writer, _ = setup
+    assert not diary_writer.today_has_content("u-abc")
+    with patch.object(diary_writer, "_call_llm", return_value="x"):
+        diary_writer.write("u-abc", "x", is_voice=False)
+    assert diary_writer.today_has_content("u-abc")
+
+
+def test_undo_works_with_yearly_subdir(setup, monkeypatch):
+    """undo 在新路径下工作。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: "14:30")
+    with patch.object(diary_writer, "_call_llm", return_value="只一段"):
+        diary_writer.write("u-abc", "x", is_voice=False)
+    ok = diary_writer.undo_last_block("u-abc")
+    assert ok
+    today = config.today_str()
+    path = vault / today[:4] / f"{today}.md"
+    assert "只一段" not in path.read_text(encoding="utf-8")
+
+
+def test_finalize_works_with_yearly_subdir(setup):
+    """finalize 在新路径下工作。"""
+    config, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm", return_value="段落"):
+        diary_writer.write("u-abc", "x", is_voice=False)
+    ok = diary_writer.finalize_today("u-abc")
+    assert ok
+    today = config.today_str()
+    path = vault / today[:4] / f"{today}.md"
+    assert diary_writer.CLOSING_MARKER in path.read_text(encoding="utf-8")
