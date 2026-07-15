@@ -131,3 +131,20 @@ def test_long_sentence_without_phrase_still_diary():
         "我记得今天有个会议但忘了几点",
     ]:
         assert detect(t) == Intent.DIARY, f"误判 START_DIARY: {t!r}"
+
+
+def test_undo_voice_style_variants():
+    """v2 fix: 语音转写常带重复/宾语/语气词, 短消息以撤回/撤销开头都算 UNDO。
+
+    复现 bug: 用户语音说"撤回", 转写为"撤回撤回撤回这一段。"被当日记记录。
+    """
+    for t in ["撤回撤回撤回这一段。", "撤回这一段", "撤回上一条", "撤回一下",
+              "撤销刚才那段", "撤回吧"]:
+        assert detect(t) == Intent.UNDO, f"failed: {t!r}"
+
+
+def test_undo_prefix_does_not_overtrigger():
+    """撤回/撤销打头才算命令; 长句或非打头不误触 (undo 有破坏性, 保守优先)。"""
+    assert detect("他把红包撤回了") == Intent.DIARY
+    assert detect("今天发的消息被领导撤回了, 有点尴尬, 我反思了一下") == Intent.DIARY
+    assert detect("删掉了一些旧照片") == Intent.DIARY  # 删掉/删除 仍只走精确匹配

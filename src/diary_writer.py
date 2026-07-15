@@ -301,7 +301,7 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
 
     voice_mark = "🎤 " if is_voice else ""
     net_note = "" if used_llm else NET_NOTE_BY_KIND.get(error_kind, NET_NOTE_BY_KIND["other"])
-    reply = f"{voice_mark}嗯, 记下来啦~ 这是今天第 {n} 段 ✍️{net_note}\n继续说, 或发「结束」收尾"
+    reply = f"{voice_mark}嗯, 记下来啦~ 这是今天第 {n} 段 ✍️{net_note}\n继续说; 记错了发「撤回」, 说完了发「结束」"
     return reply, n
 
 

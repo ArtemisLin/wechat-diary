@@ -107,6 +107,11 @@ def detect(text: str) -> Intent:
         return Intent.FINALIZE
     if norm in _UNDO_KEYWORDS:
         return Intent.UNDO
+    # 语音转写的撤回指令常带重复/宾语 ("撤回撤回撤回这一段"), 短消息按前缀兜底。
+    # 只放行"撤回/撤销"打头: undo 有破坏性, "删掉/删除"打头的短句可能是日记
+    # ("删掉了一些旧照片"), 仍只走上面的精确匹配。
+    if norm.startswith(("撤回", "撤销")):
+        return Intent.UNDO
     if norm in _HELP_KEYWORDS:
         return Intent.HELP
     if norm in _START_DIARY_KEYWORDS:
