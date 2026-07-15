@@ -51,6 +51,7 @@ _state_lock = threading.Lock()
 # 仅当连续超过 NOISE_THRESHOLD 次仍超时, 才视为真实网络故障并告警。
 LONGPOLL_NOISE_THRESHOLD = 5
 LONGPOLL_OUTAGE_INTERVAL = 30
+HEARTBEAT_INTERVAL_S = 300  # run_loop 存活时间戳落盘间隔 (v2 C.1 离线检测用)
 CHANNEL_VERSION = os.environ.get("ILINK_CHANNEL_VERSION", "1.0.2")
 PROXY_MODE = (os.environ.get("ILINK_PROXY_MODE", "auto").strip().lower() or "auto")
 if PROXY_MODE not in {"auto", "direct", "proxy"}:
@@ -425,6 +426,7 @@ def run_loop(state: dict, on_message) -> str:
     cursor = state.get("cursor", "")
     processed = set()
     timeout_streak = 0
+    last_beat = 0.0
     print("  等待消息...(Ctrl+C 退出)\n")
 
     try:
@@ -444,6 +446,13 @@ def run_loop(state: dict, on_message) -> str:
             if not resp:
                 time.sleep(1)
                 continue
+
+            # 存活心跳: 任何成功响应(含 timeout keep-alive)都证明进程在收消息
+            now_ts = time.time()
+            if now_ts - last_beat > HEARTBEAT_INTERVAL_S:
+                state["last_alive_ts"] = int(now_ts)
+                save_state(state)
+                last_beat = now_ts
 
             if resp.get("timeout"):
                 timeout_streak += 1

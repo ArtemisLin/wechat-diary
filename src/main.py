@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import atexit
 import sys
+import time
 
 import chat_handler
 import config  # noqa: 入口脚本初始化编码/env
@@ -25,6 +26,23 @@ from intents import Intent, detect
 
 
 NUDGE_EVERY = 4  # 每 4 段追加一次劝收尾
+
+OFFLINE_NOTICE_GAP_H = 12  # 离线超过该小时数, 首条回复附一次性提示
+_offline_notice: str | None = None
+
+
+def _compute_offline_notice(state: dict) -> str | None:
+    """离线间隔提示。上次存活时间缺失或间隔小于阈值时返回 None。"""
+    ts = state.get("last_alive_ts")
+    if not ts:
+        return None
+    gap_h = (time.time() - ts) / 3600
+    if gap_h < OFFLINE_NOTICE_GAP_H:
+        return None
+    return (
+        f"(小提示: 我离线了大约 {int(gap_h)} 小时, 期间你发的消息我可能没收到, "
+        "翻一下聊天记录, 漏了的可以再发我一次)"
+    )
 
 
 def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
@@ -84,8 +102,8 @@ def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
     return reply
 
 
-def _on_message(user_id: str, text: str, is_voice: bool) -> str | None:
-    """iLink 回调入口。处理首次见面欢迎 + 取名流程, 之后才走主路由。"""
+def _dispatch(user_id: str, text: str, is_voice: bool) -> str | None:
+    """处理首次见面欢迎 + 取名流程, 之后才走主路由。"""
     if user_id != config.USER_ID:
         return _handle(user_id, text, is_voice)
 
@@ -108,6 +126,16 @@ def _on_message(user_id: str, text: str, is_voice: bool) -> str | None:
     return _handle(user_id, text, is_voice)
 
 
+def _on_message(user_id: str, text: str, is_voice: bool) -> str | None:
+    """iLink 回调入口: 主路由 + 离线提示一次性附注。"""
+    global _offline_notice
+    reply = _dispatch(user_id, text, is_voice)
+    if reply and _offline_notice and user_id == config.USER_ID:
+        reply = f"{reply}\n\n{_offline_notice}"
+        _offline_notice = None
+    return reply
+
+
 def _make_send_fn(state: dict):
     def send(user_id: str, text: str) -> bool:
         return ilink.send_to_user(state, user_id, text)
@@ -115,9 +143,13 @@ def _make_send_fn(state: dict):
 
 
 def main() -> int:
+    global _offline_notice
     paths.migrate_legacy()
     user_profile.migrate_legacy()
     state = ilink.load_state()
+    _offline_notice = _compute_offline_notice(state)
+    if _offline_notice:
+        print(f"  ⚠️  {_offline_notice}")
     if not state.get("bot_token"):
         print("  未登录。先运行: python ilink.py login")
         return 1

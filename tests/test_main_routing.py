@@ -339,3 +339,29 @@ def test_name_too_long_rejected(fresh_user_setup):
     p = user_profile.load("u-abc")
     assert p.state == "awaiting_name", "名字太长仍待取名"
     assert p.name is None
+
+
+# === v2 C.1: 离线间隔提示 ===
+
+def test_offline_notice_none_when_fresh(setup):
+    import time
+    main, *_ = setup
+    assert main._compute_offline_notice({}) is None
+    assert main._compute_offline_notice({"last_alive_ts": int(time.time()) - 60}) is None
+
+
+def test_offline_notice_present_after_long_gap(setup):
+    import time
+    main, *_ = setup
+    notice = main._compute_offline_notice({"last_alive_ts": int(time.time()) - 20 * 3600})
+    assert notice is not None
+    assert "离线" in notice
+
+
+def test_offline_notice_appended_once_to_first_reply(setup):
+    main, *_ = setup
+    main._offline_notice = "(小提示: 测试离线提示)"
+    r1 = main._on_message("u-abc", "帮助", is_voice=False)
+    assert "测试离线提示" in r1
+    r2 = main._on_message("u-abc", "帮助", is_voice=False)
+    assert "测试离线提示" not in r2
