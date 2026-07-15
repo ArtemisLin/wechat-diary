@@ -56,6 +56,14 @@ def hhmm_str() -> str:
     return now_bj().strftime("%H:%M")
 
 
+_WEEKDAY_CN = "一二三四五六日"
+
+
+def weekday_str() -> str:
+    """今天是周几(中文), 北京时区。"""
+    return f"周{_WEEKDAY_CN[now_bj().weekday()]}"
+
+
 # === AI ===
 AI_API_KEY = os.environ.get("AI_API_KEY", "")
 AI_BASE_URL = os.environ.get("AI_BASE_URL", "https://api.deepseek.com/chat/completions")

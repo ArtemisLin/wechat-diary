@@ -276,7 +276,14 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
                 new_block = f"\n\n**{timestamp}**\n\n{polished}\n"
             _atomic_write(path, existing + new_block)
         else:
-            header = f"# {config.today_str()}\n"
+            header = (
+                "---\n"
+                f"date: {config.today_str()}\n"
+                f"weekday: {config.weekday_str()}\n"
+                "source: wechat-diary\n"
+                "---\n\n"
+                f"# {config.today_str()}\n"
+            )
             new_block = f"\n\n**{timestamp}**\n\n{polished}\n"
             _atomic_write(path, header + new_block)
         n = count_messages(path)

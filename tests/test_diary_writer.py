@@ -40,7 +40,8 @@ def test_first_write_creates_file_with_header(setup):
     path = _today_path(config, vault)
     assert path.exists()
     content = path.read_text(encoding="utf-8")
-    assert content.startswith(f"# {config.today_str()}\n")
+    assert content.startswith("---\n")
+    assert f"# {config.today_str()}" in content
     assert "今天吃了面" in content
     assert "✍️" in reply
     assert "记下来啦" in reply or "记下" in reply
@@ -365,3 +366,26 @@ def test_finalize_works_with_yearly_subdir(setup):
     today = config.today_str()
     path = vault / today[:4] / f"{today}.md"
     assert diary_writer.CLOSING_MARKER in path.read_text(encoding="utf-8")
+
+
+# === v2 B.2: frontmatter 测试 ===
+
+def test_new_file_has_frontmatter(setup):
+    """新建文件头部是 YAML frontmatter (date/weekday/source), 之后才是 # 日期。"""
+    config, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm", return_value="x"):
+        diary_writer.write("u-abc", "x", is_voice=False)
+    content = _today_path(config, vault).read_text(encoding="utf-8")
+    assert content.startswith("---\n")
+    assert f"date: {config.today_str()}\n" in content
+    assert "weekday: 周" in content
+    assert "source: wechat-diary\n" in content
+    assert f"# {config.today_str()}" in content
+
+
+def test_frontmatter_not_counted_as_message(setup):
+    """frontmatter 块不算消息, count_messages 仍只数正文。"""
+    config, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm", return_value="x"):
+        diary_writer.write("u-abc", "x", is_voice=False)
+    assert diary_writer.count_messages(_today_path(config, vault)) == 1
