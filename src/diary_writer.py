@@ -263,6 +263,8 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
         return "嗯? 没听清, 再说一次?", 0
 
     polished, used_llm, error_kind = polish(text)
+    if is_voice:
+        polished = f"🎤 {polished}"
     timestamp = config.hhmm_str()
 
     try:

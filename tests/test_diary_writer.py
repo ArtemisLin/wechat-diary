@@ -389,3 +389,16 @@ def test_frontmatter_not_counted_as_message(setup):
     with patch.object(diary_writer, "_call_llm", return_value="x"):
         diary_writer.write("u-abc", "x", is_voice=False)
     assert diary_writer.count_messages(_today_path(config, vault)) == 1
+
+
+# === v2 B.3: 语音 🎤 入库标记 ===
+
+def test_voice_message_marked_in_file(setup):
+    """语音消息在文件里以 🎤 前缀标记, 文字消息不标。"""
+    config, _, diary_writer, vault = setup
+    with patch.object(diary_writer, "_call_llm", side_effect=["语音内容", "文字内容"]):
+        diary_writer.write("u-abc", "a", is_voice=True)
+        diary_writer.write("u-abc", "b", is_voice=False)
+    content = _today_path(config, vault).read_text(encoding="utf-8")
+    assert "🎤 语音内容" in content
+    assert "🎤 文字内容" not in content
