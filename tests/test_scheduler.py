@@ -157,3 +157,48 @@ def test_reminder_falls_back_to_default_for_unnamed(setup):
     job()
     assert sent
     assert "你" in sent[0][1] or "今天还没记呢" in sent[0][1]
+
+# === v2 C.2: 错过提醒的启动补偿 ===
+
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+def _fake_now(hour):
+    return datetime(2026, 7, 15, hour, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
+
+
+@pytest.fixture
+def catchup_setup(setup, monkeypatch, tmp_path):
+    scheduler, diary_writer, vault = setup
+    monkeypatch.setattr(scheduler, "CATCHUP_FILE", tmp_path / "remind_state.json")
+    return scheduler, diary_writer, vault
+
+
+def test_catchup_skips_before_remind_hour(catchup_setup, monkeypatch):
+    scheduler, _, _ = catchup_setup
+    monkeypatch.setattr(scheduler.config, "now_bj", lambda: _fake_now(10))
+    calls = []
+    assert not scheduler.run_catchup(lambda u, t: calls.append((u, t)) or True)
+    assert calls == []
+
+
+def test_catchup_sends_after_hour_once_per_day(catchup_setup, monkeypatch):
+    scheduler, _, _ = catchup_setup
+    monkeypatch.setattr(scheduler.config, "now_bj", lambda: _fake_now(22))
+    calls = []
+    assert scheduler.run_catchup(lambda u, t: calls.append((u, t)) or True)
+    assert len(calls) == 1
+    # 同一天第二次调用不再补发
+    assert not scheduler.run_catchup(lambda u, t: calls.append((u, t)) or True)
+    assert len(calls) == 1
+
+
+def test_catchup_skips_when_diary_written(catchup_setup, monkeypatch):
+    scheduler, diary_writer, _ = catchup_setup
+    with patch.object(diary_writer, "_call_llm", return_value="x"):
+        diary_writer.write("u-abc", "x", is_voice=False)
+    monkeypatch.setattr(scheduler.config, "now_bj", lambda: _fake_now(22))
+    calls = []
+    assert not scheduler.run_catchup(lambda u, t: calls.append((u, t)) or True)
+    assert calls == []

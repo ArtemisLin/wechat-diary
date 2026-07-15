@@ -5,16 +5,54 @@
 """
 from __future__ import annotations
 
+import json
+import os
 from typing import Callable
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import config
 import diary_writer
+import paths
 import users
 
 REMIND_TEXT_1_TEMPLATE = "{name}, 今天还没记呢~ 想记的话发「开始记日记」就开始 📖"
 REMIND_TEXT_2_TEMPLATE = "{name}, 快睡了, 还要不要留几句给今天? 发「开始记日记」开始记录"
+
+CATCHUP_FILE = paths.DATA_DIR / "remind_state.json"
+
+
+def _load_catchup_date() -> str:
+    try:
+        return json.loads(CATCHUP_FILE.read_text(encoding="utf-8")).get("last_catchup_date", "")
+    except (OSError, json.JSONDecodeError):
+        return ""
+
+
+def _save_catchup_date(date_str: str) -> None:
+    CATCHUP_FILE.parent.mkdir(parents=True, exist_ok=True)
+    tmp = CATCHUP_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"last_catchup_date": date_str}), encoding="utf-8")
+    os.replace(tmp, CATCHUP_FILE)
+
+
+def run_catchup(send_fn: Callable[[str, str], bool]) -> bool:
+    """启动补偿 (v2 C.2): 已过 REMIND_HOUR_1 且当天未写且今天没补偿过, 补发一次提醒。
+    无论是否发送成功, 当天只尝试一次(记录日期), 避免反复重启刷屏。"""
+    if config.now_bj().hour < config.REMIND_HOUR_1:
+        return False
+    today = config.today_str()
+    if _load_catchup_date() == today:
+        return False
+    import user_profile
+    sent_any = False
+    for uid in users.all_active():
+        name = user_profile.get_name(uid)
+        text = REMIND_TEXT_1_TEMPLATE.format(name=name)
+        if check_and_remind(uid, text, send_fn):
+            sent_any = True
+    _save_catchup_date(today)
+    return sent_any
 
 
 def check_and_remind(user_id: str, text: str, send_fn: Callable[[str, str], bool]) -> bool:

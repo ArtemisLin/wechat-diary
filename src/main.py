@@ -164,16 +164,18 @@ def main() -> int:
         print("  ℹ️  零 key 模式: 未配 AI_API_KEY, 原文直存 (润色/闲聊为可选增强)")
 
     try:
-        from scheduler import create_scheduler
+        import scheduler as diary_scheduler
     except ModuleNotFoundError as e:
         if e.name and e.name.startswith("apscheduler"):
-            print("  缺少依赖 apscheduler。先运行: python -m pip install apscheduler tzdata")
+            print("  缺少依赖 apscheduler。先运行: python -m pip install -r requirements.txt")
             return 1
         raise
 
-    sched = create_scheduler(_make_send_fn(state))
+    sched = diary_scheduler.create_scheduler(_make_send_fn(state))
     sched.start()
     atexit.register(lambda: sched.shutdown(wait=False))
+    if diary_scheduler.run_catchup(_make_send_fn(state)):
+        print("  已补发今日提醒 (启动补偿)")
 
     print("\n=== wechat-diary 已启动 ===")
     print(f"  时区: {config.TIMEZONE}")
