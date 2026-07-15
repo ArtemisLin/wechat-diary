@@ -164,6 +164,9 @@ def polish(raw_text: str) -> tuple[str, bool, str | None]:
     raw_text = raw_text.strip()
     if not raw_text:
         return raw_text, False, None
+    if not config.AI_API_KEY:
+        # 零 key 模式: 润色显式关闭, 原文直存 —— 是正常形态, 不是错误
+        return raw_text, False, None
     prompt = POLISH_PROMPT.format(raw_text=raw_text)
     try:
         polished = _call_llm(prompt)

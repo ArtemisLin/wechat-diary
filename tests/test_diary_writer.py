@@ -116,13 +116,19 @@ def test_llm_server_error_gives_specific_hint(setup):
     assert "服务" in reply or "异常" in reply
 
 
-def test_llm_no_key_error_gives_specific_hint(setup):
-    """没配 AI Key → 微信回复带"没配 AI Key"。"""
-    _, _, diary_writer, vault = setup
+def test_no_key_mode_stores_raw_without_error_note(setup, monkeypatch):
+    """零 key 模式: 不调 LLM, 原文直存, 回复不带任何错误提示。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "AI_API_KEY", "")
+    called = []
     with patch.object(diary_writer, "_call_llm",
-                      side_effect=diary_writer.LLMError("no_key")):
-        reply, _ = diary_writer.write("u-abc", "今天累", is_voice=False)
-    assert "Key" in reply
+                      side_effect=lambda *a, **k: called.append(1)):
+        reply, n = diary_writer.write("u-abc", "今天天气不错", is_voice=False)
+    assert not called, "零 key 模式不应调用 LLM"
+    assert n == 1
+    assert "Key" not in reply and "原文已存" not in reply
+    content = next(vault.rglob("*.md")).read_text(encoding="utf-8")
+    assert "今天天气不错" in content
 
 
 def test_empty_text_returns_friendly_message(setup):

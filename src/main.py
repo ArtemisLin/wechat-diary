@@ -129,7 +129,7 @@ def main() -> int:
         print("  .env 未配置 DIARY_DIR")
         return 1
     if not config.AI_API_KEY:
-        print("  ⚠️  AI_API_KEY 未配置,LLM 润色失效,会回落到原文写入")
+        print("  ℹ️  零 key 模式: 未配 AI_API_KEY, 原文直存 (润色/闲聊为可选增强)")
 
     try:
         from scheduler import create_scheduler
@@ -147,6 +147,7 @@ def main() -> int:
     print(f"  时区: {config.TIMEZONE}")
     print(f"  提醒: {config.REMIND_HOUR_1}:00 / {config.REMIND_HOUR_2}:00")
     print(f"  diary: {config.DIARY_DIR}")
+    print(f"  AI 润色: {'开启' if config.AI_API_KEY else '关闭 (零 key 模式)'}")
     print(f"  user: {config.USER_ID[:20]}...")
     _profile = user_profile.load(config.USER_ID)
     _state_label = {
