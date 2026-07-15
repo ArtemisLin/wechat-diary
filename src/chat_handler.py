@@ -19,6 +19,7 @@ from urllib.request import Request
 
 import config
 import diary_writer
+import welcome
 
 CHAT_SYSTEM_PROMPT = """你是日记 Agent 在闲聊模式下的助手。用户当前不在记录日记的状态, 你陪用户随便聊聊。
 
@@ -54,7 +55,9 @@ _history: dict[str, Deque[dict]] = defaultdict(lambda: deque(maxlen=_HISTORY_MAX
 
 
 def chat(user_id: str, user_text: str) -> str:
-    """单条闲聊。返回 AI 回复 (失败时回落兜底池)。"""
+    """单条闲聊。返回 AI 回复 (失败时回落兜底池; 零 key 时固定引导文案)。"""
+    if not config.AI_API_KEY:
+        return welcome.random_no_key_chat()
     history = _history[user_id]
     messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
     messages.extend(history)

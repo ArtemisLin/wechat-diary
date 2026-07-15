@@ -103,6 +103,14 @@ CHAT_GREETING_REPLIES: list[str] = [
 ]
 
 
+# 零 key 模式下 chat 的固定文案 (未配 AI_API_KEY, LLM 闲聊不可用)
+NO_KEY_CHAT_REPLIES: list[str] = [
+    "我在呢~ 不过我的主业是帮你记日记 📖 发「开始记日记」就开始",
+    "嗯嗯我听着~ 想记下来的话, 发「开始记日记」就好",
+    "我在~ 陪聊需要配置 AI_API_KEY 才能开启; 记日记不用, 发「开始记日记」就行",
+]
+
+
 # 带名字的仪式感结束语 (供 random_closing 30% 概率随机抽)
 CLOSING_LINES_WITH_NAME: list[str] = [
     "辛苦啦{name}~ 今天又记下了一些珍贵的东西 🌙",
@@ -126,6 +134,11 @@ def random_closing(name: str | None = None) -> str:
 def random_greeting() -> str:
     """从 CHAT_GREETING_REPLIES 随机抽一句。"""
     return random.choice(CHAT_GREETING_REPLIES)
+
+
+def random_no_key_chat() -> str:
+    """零 key 模式下 chat 的固定引导文案。"""
+    return random.choice(NO_KEY_CHAT_REPLIES)
 
 
 def random_enter_diary() -> str:

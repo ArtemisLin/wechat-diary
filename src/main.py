@@ -79,7 +79,7 @@ def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
         reply = chat_handler.chat(user_id, text)
 
     new_count = session_state.increment_chat_count(user_id)
-    if new_count >= 2:
+    if new_count >= 2 and config.AI_API_KEY:
         reply = reply + welcome.CHAT_COST_REMINDER
     return reply
 

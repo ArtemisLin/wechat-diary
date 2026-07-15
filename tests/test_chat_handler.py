@@ -94,13 +94,18 @@ def test_reset_history_clears_user(setup):
         assert "msg" not in contents
 
 
-def test_chat_no_api_key_returns_fallback(setup, monkeypatch):
+def test_chat_no_key_returns_guidance(setup, monkeypatch):
+    """零 key 模式 (v2): chat 返回固定引导文案, 不调 LLM。"""
     import config
     monkeypatch.setattr(config, "AI_API_KEY", "")
     ch = setup
     ch.reset_history("u-abc")
-    reply = ch.chat("u-abc", "你好")
-    assert reply in ch.CHAT_FALLBACK_REPLIES
+    called = []
+    with patch.object(ch, "_call_chat_llm",
+                      side_effect=lambda *a, **k: called.append(1)):
+        reply = ch.chat("u-abc", "随便聊聊")
+    assert not called, "零 key 模式不应调用 LLM"
+    assert "开始记日记" in reply
 
 
 def test_prompt_forbids_fake_mode_switching(setup):
