@@ -196,9 +196,10 @@ def test_catchup_sends_after_hour_once_per_day(catchup_setup, monkeypatch):
 
 def test_catchup_skips_when_diary_written(catchup_setup, monkeypatch):
     scheduler, diary_writer, _ = catchup_setup
+    # 打桩必须在写日记之前: today_str 派生自 now_bj, 写入与检查要用同一个假日期
+    monkeypatch.setattr(scheduler.config, "now_bj", lambda: _fake_now(22))
     with patch.object(diary_writer, "_call_llm", return_value="x"):
         diary_writer.write("u-abc", "x", is_voice=False)
-    monkeypatch.setattr(scheduler.config, "now_bj", lambda: _fake_now(22))
     calls = []
     assert not scheduler.run_catchup(lambda u, t: calls.append((u, t)) or True)
     assert calls == []
