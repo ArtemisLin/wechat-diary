@@ -15,6 +15,9 @@ ILINK_STATE = DATA_DIR / "ilink_state.json"
 WELCOMED_USERS = DATA_DIR / "welcomed_users.json"
 ILINK_LOG = LOGS_DIR / "ilink.log"
 AI_LOG = LOGS_DIR / "ai.log"
+# 主动推送探针日志: 每次 send_to_user 记一行 (token 年龄 / 返回码 / 成败),
+# 用来攒数据回答"context_token 到底多久失效"。人可读, 直接 cat 就行。
+REMIND_PROBE_LOG = LOGS_DIR / "remind-probe.log"
 SESSION_STATE = DATA_DIR / "session_state.json"
 USER_PROFILES = DATA_DIR / "user_profiles.json"
 

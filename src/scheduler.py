@@ -61,7 +61,11 @@ def check_and_remind(user_id: str, text: str, send_fn: Callable[[str, str], bool
     try:
         users.load(user_id)
         if diary_writer.today_has_content(user_id):
+            # 正当跳过(今天已经写过了)。打出来, 免得和"发失败"混淆 ——
+            # 排查提醒问题时要能一眼分清"没发"和"发了但没到"。
+            print(f"  提醒跳过({config.hhmm_str()}): 今天已经写过了")
             return False
+        print(f"  提醒触发({config.hhmm_str()}): 今天还没写, 尝试发送...")
         return bool(send_fn(user_id, text))
     except users.UserNotFoundError:
         print(f"  提醒跳过:未知用户 {user_id}")

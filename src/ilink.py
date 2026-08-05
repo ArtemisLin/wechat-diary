@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
@@ -373,7 +373,8 @@ def login() -> dict | None:
     return None
 
 
-def send_message(state: dict, to_user_id: str, context_token: str, text: str) -> bool:
+def send_message_raw(state: dict, to_user_id: str, context_token: str, text: str) -> dict:
+    """发消息, 返回服务端原始响应 (供上层做返回码分流/记录)。"""
     client_id = f"diary:{int(time.time() * 1000)}-{random.randint(10000000, 99999999):08x}"
     body = {
         "msg": {
@@ -387,13 +388,40 @@ def send_message(state: dict, to_user_id: str, context_token: str, text: str) ->
         },
         "base_info": _base_info(),
     }
-    resp = _api_request(
+    return _api_request(
         "POST",
         "/ilink/bot/sendmessage",
         body=body,
         headers=_make_headers(state["bot_token"]),
     )
-    if resp is not None and "error" not in resp and "timeout" not in resp and "_ret_error" not in resp:
+
+
+def resp_ok(resp: dict | None) -> bool:
+    """响应是否算成功。"""
+    if not resp:
+        return False
+    return "error" not in resp and "timeout" not in resp and "_ret_error" not in resp
+
+
+def resp_code(resp: dict | None) -> object:
+    """从响应里抽出返回码 (ret / errcode / HTTP error / timeout)。"""
+    if not resp:
+        return "empty"
+    if resp.get("timeout"):
+        return "timeout"
+    if "error" in resp:
+        return f"http_{resp['error']}"
+    code = resp.get("_ret_error")
+    if code is None:
+        code = resp.get("ret")
+    if code is None:
+        code = resp.get("errcode")
+    return 0 if code is None else code
+
+
+def send_message(state: dict, to_user_id: str, context_token: str, text: str) -> bool:
+    resp = send_message_raw(state, to_user_id, context_token, text)
+    if resp_ok(resp):
         _log(f"send ok to={to_user_id[:20]} text={text[:80]!r}")
         return True
     print(f"  发送失败: {resp}")
@@ -401,24 +429,67 @@ def send_message(state: dict, to_user_id: str, context_token: str, text: str) ->
     return False
 
 
-def _is_token_fresh(info: dict, max_hours: int = 20) -> bool:
+def token_age_hours(info: dict | None) -> float | None:
+    """缓存的 context_token 有多老(小时)。无缓存/时间戳坏了返回 None。
+
+    注: 这个函数**只用于记录和展示**, 绝不用来决定发不发 —— 见 send_to_user。
+    """
+    if not info:
+        return None
     cached_time = info.get("time")
     if not cached_time:
-        return False
+        return None
     try:
         cached_dt = datetime.strptime(cached_time, "%Y-%m-%d %H:%M:%S")
     except (ValueError, TypeError):
-        return False
-    return datetime.now() - cached_dt < timedelta(hours=max_hours)
+        return None
+    return (datetime.now() - cached_dt).total_seconds() / 3600
 
 
-def send_to_user(state: dict, user_id: str, text: str) -> bool:
-    cached = state.get("cached_tokens", {}).get(user_id)
-    if not cached or not _is_token_fresh(cached):
-        print(f"  主动发送→{user_id[:15]}: 跳过(无有效 context_token)")
-        return False
-    ok = send_message(state, user_id, cached["context_token"], text)
-    print(f"  主动发送→{user_id[:15]}: {'OK' if ok else 'FAIL'}")
+def _probe_log(line: str) -> None:
+    """往 data/logs/remind-probe.log 追加一行人可读记录。写失败不影响主流程。"""
+    try:
+        paths.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(paths.REMIND_PROBE_LOG, "a", encoding="utf-8") as f:
+            f.write(f"{stamp}  {line}\n")
+    except OSError:
+        pass
+
+
+def send_to_user(state: dict, user_id: str, text: str, use_token: bool = True) -> bool:
+    """主动给用户发消息(提醒等)。**永远真的去发, 不做本地预判。**
+
+    2026-08 修正 —— 原实现有个 `_is_token_fresh(max_hours=20)`, token 超过 20 小时
+    就直接 print 跳过、根本不调 sendmessage。那个 20 小时是本地拍脑袋的数字:
+
+      腾讯官方实现 (@tencent-weixin/openclaw-weixin, src/messaging/inbound.ts) 的
+      contextToken store 是个纯 Map<string,string> —— 没有时间戳、没有 TTL、没有
+      过期逻辑, 而且特意落盘以便 "survive gateway restarts"; 没有 token 时官方
+      (src/channel.ts:123) 只 warn 一句然后照发。
+
+    所以策略改成和官方一致: 有什么 token 就用什么, 没有也发, 失败了按返回码记录。
+    每次发送往 data/logs/remind-probe.log 记一行, 攒真实数据回答"到底多久失效"。
+
+    use_token=False 用于对照实验: 故意不带 context_token 发, 看服务端认不认。
+    """
+    cached = state.get("cached_tokens", {}).get(user_id) or {}
+    context_token = cached.get("context_token", "") if use_token else ""
+    age_h = token_age_hours(cached)
+    age_label = f"{age_h:.1f}h" if age_h is not None else "none"
+
+    resp = send_message_raw(state, user_id, context_token, text)
+    ok = resp_ok(resp)
+    code = resp_code(resp)
+
+    _probe_log(
+        f"{'OK  ' if ok else 'FAIL'} "
+        f"token_age={age_label} has_token={bool(context_token)} "
+        f"code={code} to={user_id[:15]} text={text[:40]!r} resp={str(resp)[:200]}"
+    )
+    print(f"  主动发送→{user_id[:15]}: {'OK' if ok else 'FAIL'} (token 年龄 {age_label}, code={code})")
+    if not ok:
+        print(f"    服务端响应: {resp}")
     return ok
 
 
@@ -576,11 +647,79 @@ def _status_cli(state: dict) -> int:
     return _status_to_exit_code(probe)
 
 
+PING_USAGE = """用法: python ilink.py ping [--no-token] [自定义文字]
+
+  立刻尝试主动给自己发一条消息, 打印 token 年龄和服务端完整响应。
+  微信上收没收到, 就是最直接的答案。
+
+  --no-token   对照实验: 故意不带 context_token 发, 看服务端认不认
+  --log        只看历史探针记录, 不发新的
+
+  结果同时追加到 data/logs/remind-probe.log"""
+
+
+def _show_probe_log(n: int = 15) -> None:
+    if not paths.REMIND_PROBE_LOG.exists():
+        print("  (还没有探针记录)")
+        return
+    try:
+        lines = paths.REMIND_PROBE_LOG.read_text(encoding="utf-8").splitlines()
+    except OSError as e:
+        print(f"  读取探针日志失败: {e}")
+        return
+    print(f"\n  === 最近 {min(n, len(lines))} 条探针记录 (共 {len(lines)} 条) ===")
+    for line in lines[-n:]:
+        print(f"  {line}")
+
+
+def _ping_cli(state: dict) -> int:
+    """主动推送探针: 到点就发, 看服务端到底认不认。"""
+    args = sys.argv[2:]
+    if "--log" in args:
+        _show_probe_log()
+        return 0
+
+    use_token = "--no-token" not in args
+    custom = " ".join(a for a in args if not a.startswith("--")).strip()
+
+    if not state.get("bot_token"):
+        print("  未登录，先运行: python ilink.py login")
+        return 1
+    user_id = state.get("ilink_user_id", "")
+    if not user_id:
+        print("  state 里没有 ilink_user_id，请先重新登录")
+        return 1
+
+    cached = state.get("cached_tokens", {}).get(user_id) or {}
+    age_h = token_age_hours(cached)
+    age_label = f"{age_h:.1f} 小时前" if age_h is not None else "无缓存"
+
+    print(f"\n  === 主动推送探针 ===")
+    print(f"  上次收到你的消息: {cached.get('time', '(无记录)')}  ({age_label})")
+    print(f"  context_token: {'带上' if use_token and cached.get('context_token') else '不带 (对照实验)' if not use_token else '无缓存, 空着发'}")
+
+    text = custom or f"🔔 提醒探针 {config.hhmm_str()} (token 年龄 {age_label})"
+    print(f"  发送内容: {text}")
+    print("  → 发送中...\n")
+
+    ok = send_to_user(state, user_id, text, use_token=use_token)
+
+    print()
+    if ok:
+        print("  ✅ 服务端接受了。**去微信看一眼真的收到没有** —— 服务端返回 0 不等于用户看得见。")
+    else:
+        print("  ❌ 服务端拒绝了。上面的响应就是原因, 记进 remind-probe.log 了。")
+    _show_probe_log(8)
+    return 0 if ok else 1
+
+
 def _cli() -> int:
     paths.migrate_legacy()
     state = load_state()
     if len(sys.argv) < 2:
-        print("用法: python ilink.py <login|status|send TEXT>")
+        print("用法: python ilink.py <login|status|send TEXT|ping>")
+        print()
+        print(PING_USAGE)
         return 1
 
     cmd = sys.argv[1]
@@ -588,6 +727,8 @@ def _cli() -> int:
         return 0 if login() else 1
     if cmd == "status":
         return _status_cli(state)
+    if cmd == "ping":
+        return _ping_cli(state)
     if cmd == "send":
         if len(sys.argv) < 3:
             print("用法: python ilink.py send <TEXT>")
