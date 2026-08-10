@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt pyinstaller
+      - run: pip install -r requirements.txt pyinstaller certifi
       - run: pyinstaller wechat-diary.spec --noconfirm
       - name: smoke test binary
         shell: bash

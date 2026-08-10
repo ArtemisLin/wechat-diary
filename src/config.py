@@ -36,6 +36,13 @@ def _load_env_file(path: Path) -> None:
 if getattr(sys, "frozen", False):
     # PyInstaller 打包态: .env 在 exe 旁边 (与 paths.ROOT 同一逻辑)
     PROJECT_ROOT = Path(sys.executable).resolve().parent
+    # 冻结态 CA 证书: 构建机 Python 的证书路径在用户机器上不存在, 不带上
+    # certifi 的证书文件, macOS 上所有 HTTPS 都会 CERTIFICATE_VERIFY_FAILED
+    # (登录二维码/AI 润色全挂; Windows 因走系统证书库幸免)。
+    # OpenSSL 尊重 SSL_CERT_FILE 环境变量; 用户已设置的话不覆盖。
+    _bundled_ca = Path(getattr(sys, "_MEIPASS", "")) / "certifi" / "cacert.pem"
+    if _bundled_ca.exists():
+        os.environ.setdefault("SSL_CERT_FILE", str(_bundled_ca))
 else:
     PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _load_env_file(PROJECT_ROOT / ".env")

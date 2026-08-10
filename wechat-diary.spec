@@ -4,7 +4,7 @@
 在目标平台上构建 (exe 只能在 Windows 上打, .app 只能在 macOS 上打;
 仓库的 GitHub Actions build 工作流会在云端两个平台各打一份):
 
-    pip install -r requirements.txt pyinstaller
+    pip install -r requirements.txt pyinstaller certifi
     pyinstaller wechat-diary.spec --noconfirm
 
 产物: dist/wechat-diary(.exe) —— 自带 Python 与全部依赖, 用户双击即用,
@@ -26,6 +26,13 @@ try:
     datas += copy_metadata("apscheduler")
 except Exception:
     pass
+
+# CA 根证书必须进包: 构建机 Python 的证书路径在用户机器上不存在,
+# 缺了它 macOS 冻结态所有 HTTPS 直接握手失败 (config.py 冻结分支负责启用)。
+# 故意不用 try 包裹 —— 构建机没装 certifi 就应该在这里炸, 不能再出哑弹包。
+import certifi
+
+datas += [(certifi.where(), "certifi")]
 
 a = Analysis(
     ["src/webui.py"],
