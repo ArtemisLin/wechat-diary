@@ -383,13 +383,22 @@ def api_folder_pick() -> dict:
         # 用系统自带 PowerShell 弹原生对话框。绝不能用 [sys.executable, "-c"]:
         # PyInstaller 打包态下 sys.executable 是本 exe 自己, 会把程序再启动
         # 一份、每点一次"浏览"多开一个浏览器标签页 (Windows 真机实测事故)
+        # 对话框必须真的到前台: 用一个 1px 不可见但"已显示并激活"的置顶窗体
+        # 做 owner, 否则弹窗常被压在浏览器窗口后面, 用户以为没弹 (真机实测)
         ps = (
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
             "Add-Type -AssemblyName System.Windows.Forms;"
-            "$w = New-Object System.Windows.Forms.Form; $w.TopMost = $true;"
+            "Add-Type -AssemblyName System.Drawing;"
+            "$w = New-Object System.Windows.Forms.Form;"
+            "$w.TopMost = $true; $w.ShowInTaskbar = $false;"
+            "$w.FormBorderStyle = 'None'; $w.StartPosition = 'Manual';"
+            "$w.Size = New-Object System.Drawing.Size(1,1);"
+            "$w.Location = New-Object System.Drawing.Point(-2000,-2000);"
+            "$w.Show(); $w.Activate();"
             "$f = New-Object System.Windows.Forms.FolderBrowserDialog;"
             "$f.Description = 'Select diary folder';"
-            "if ($f.ShowDialog($w) -eq [System.Windows.Forms.DialogResult]::OK)"
+            "$r = $f.ShowDialog($w); $w.Close();"
+            "if ($r -eq [System.Windows.Forms.DialogResult]::OK)"
             " { Write-Output $f.SelectedPath }"
         )
         try:

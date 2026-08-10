@@ -554,12 +554,15 @@ $("btn-pick").addEventListener("click", async function () {
   clearErr("err-2");
   var btn = $("btn-pick");
   btn.disabled = true;
+  btn.textContent = "等待系统窗口…";
+  showErr("err-2", "已请求打开系统的文件夹选择窗口。如果没看到, 检查任务栏或把浏览器窗口最小化找找; 也可以直接在左边输入框手动填路径。");
   try {
     var r = await api("/api/folder/pick", "POST", {});
     if (r.ok && r.path) {
+      clearErr("err-2");
       $("inp-dir").value = r.path;
     } else if (r.canceled) {
-      /* 用户自己关掉了选择框, 不是错误, 安静返回 */
+      clearErr("err-2");  /* 用户自己关掉了选择框, 不是错误, 安静返回 */
     } else {
       showErr("err-2", "无法打开系统文件夹选择框, 请在输入框里手动填写绝对路径");
       $("inp-dir").focus();
@@ -569,6 +572,7 @@ $("btn-pick").addEventListener("click", async function () {
     $("inp-dir").focus();
   } finally {
     btn.disabled = false;
+    btn.textContent = "浏览…";
   }
 });
 
