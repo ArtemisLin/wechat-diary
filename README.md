@@ -25,6 +25,10 @@
 
 ## 5 分钟部署
 
+**图形化方式 (推荐)**: 装好依赖后运行 `python src/webui.py`, 浏览器会自动打开
+本地页面 (只监听 127.0.0.1) —— 扫码绑定微信 → 点选日记文件夹 → 启动, 三步完成,
+不用手工编辑 .env。命令行方式如下, 两者等价:
+
 1. clone 本仓库, 安装依赖:
 
 ```bash
@@ -154,7 +158,10 @@ wechat-diary/
 │   ├── welcome.py         # 全部文案
 │   ├── user_profile.py    # 用户名字 + 状态机持久化
 │   ├── mcp_server.py      # 只读 MCP server (零依赖)
-│   └── main.py            # 入口
+│   ├── envfile.py         # .env 原子更新 (webui 用)
+│   ├── webui.py           # 本地 Web UI 入口 (扫码/选文件夹/启停, 零依赖)
+│   ├── web/index.html     # Web UI 前端 (单文件, 无外部资源)
+│   └── main.py            # 命令行入口
 ├── scripts/migrate_v2.py  # v1 → v2 存量迁移
 ├── docs/data-contract.md  # 数据契约 (对 Agent 的接口承诺)
 ├── docs/demo-vault/       # 演示日记库 (合成数据, 供体验与评测)

@@ -373,6 +373,67 @@ def login() -> dict | None:
     return None
 
 
+def fetch_login_qr() -> dict | None:
+    """获取登录二维码 (webui 用, 不动现有 login())。
+
+    返回 {"qrcode": ..., "qr_img_url": ...}; 失败返回 None。
+    qr_img_url 就是二维码图片地址, 网页 <img src> 可直接显示。
+    """
+    resp = _api_request("GET", "/ilink/bot/get_bot_qrcode?bot_type=3")
+    if (
+        not resp
+        or "error" in resp
+        or resp.get("timeout")
+        or resp.get("_ret_error")
+        or not resp.get("qrcode")
+    ):
+        _log(f"fetch_login_qr failed: {resp}")
+        return None
+    return {
+        "qrcode": resp.get("qrcode", ""),
+        "qr_img_url": resp.get("qrcode_img_content", ""),
+    }
+
+
+def check_login_status(qrcode: str) -> dict:
+    """单次查询二维码状态 (webui 轮询用, 每次调用只查一次, 无阻塞循环)。
+
+    返回 {"status": waiting/confirmed/expired/canceled/error, "state"?: dict}。
+    confirmed 时构建 state 并 save_state (与 login() 的落盘逻辑一致)。
+    """
+    resp = _api_request(
+        "GET",
+        f"/ilink/bot/get_qrcode_status?qrcode={qrcode}",
+        headers={"iLink-App-ClientVersion": "1"},
+        timeout=35,
+    )
+    if not resp or resp.get("timeout") or "error" in resp or "_ret_error" in resp:
+        _log(f"check_login_status error resp={str(resp)[:200]}")
+        return {"status": "error"}
+
+    status = resp.get("status", "")
+    if status == "confirmed":
+        state = {
+            "bot_token": resp.get("bot_token", ""),
+            "bot_id": resp.get("ilink_bot_id", ""),
+            "ilink_user_id": resp.get("ilink_user_id", ""),
+            "login_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "cursor": "",
+            "cached_tokens": {},
+        }
+        save_state(state)
+        _log(
+            "webui login confirmed "
+            f"bot_id={state.get('bot_id', '')} user_id={state.get('ilink_user_id', '')}"
+        )
+        return {"status": "confirmed", "state": state}
+    if status == "expired":
+        return {"status": "expired"}
+    if status in {"cancel", "canceled", "cancelled"}:
+        return {"status": "canceled"}
+    return {"status": "waiting"}
+
+
 def send_message_raw(state: dict, to_user_id: str, context_token: str, text: str) -> dict:
     """发消息, 返回服务端原始响应 (供上层做返回码分流/记录)。"""
     client_id = f"diary:{int(time.time() * 1000)}-{random.randint(10000000, 99999999):08x}"
@@ -493,7 +554,12 @@ def send_to_user(state: dict, user_id: str, text: str, use_token: bool = True) -
     return ok
 
 
-def run_loop(state: dict, on_message) -> str:
+def run_loop(state: dict, on_message, should_stop=None) -> str:
+    """长轮询收消息主循环。
+
+    should_stop: 可选的无参回调, 每轮循环开头检查, 返回 True 则优雅退出并
+    返回 "stopped" (webui 停止 bot 用)。默认 None, 行为与之前完全一致。
+    """
     cursor = state.get("cursor", "")
     processed = set()
     timeout_streak = 0
@@ -502,6 +568,10 @@ def run_loop(state: dict, on_message) -> str:
 
     try:
         while True:
+            if should_stop is not None and should_stop():
+                print("  收到停止信号, 退出消息循环")
+                _log("run_loop stopped by should_stop")
+                return "stopped"
             body = {
                 "get_updates_buf": cursor,
                 "base_info": _base_info(),

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wechat-diary</title>
+<style>
+  /* ---- 基础 ---- */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --ink: #1f2328;
+    --sub: #6b7280;
+    --line: #e5e7eb;
+    --bg: #f6f7f8;
+    --card: #ffffff;
+    --accent: #2f6f4f;
+    --accent-weak: #e8f1ec;
+    --danger: #b3423a;
+    --danger-weak: #fbecea;
+    --warn-weak: #fdf6e3;
+    --warn-line: #e6d9a8;
+  }
+  html { font-size: 16px; }
+  body {
+    font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 32px 16px 48px;
+  }
+  header h1 {
+    font-size: 1.35rem;
+    font-weight: 650;
+    letter-spacing: .01em;
+  }
+  header p.tagline {
+    color: var(--sub);
+    font-size: .85rem;
+    margin-top: 2px;
+  }
+
+  /* ---- 全局提示条 ---- */
+  .banner {
+    display: none;
+    margin-top: 16px;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: .9rem;
+  }
+  .banner.show { display: block; }
+  .banner.warn { background: var(--warn-weak); border: 1px solid var(--warn-line); }
+  .banner.danger { background: var(--danger-weak); border: 1px solid #eec5c1; color: var(--danger); }
+
+  /* ---- 步骤指示 ---- */
+  .steps {
+    display: flex;
+    gap: 8px;
+    margin: 24px 0 16px;
+    font-size: .82rem;
+    color: var(--sub);
+  }
+  .steps .step-tab {
+    flex: 1;
+    text-align: center;
+    padding: 6px 0;
+    border-bottom: 2px solid var(--line);
+    white-space: nowrap;
+  }
+  .steps .step-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    font-weight: 600;
+  }
+  .steps .step-tab.done { color: var(--accent); }
+
+  /* ---- 卡片与区块 ---- */
+  section.card {
+    display: none;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 24px 20px;
+  }
+  section.card.show { display: block; }
+  section.card h2 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .hint { color: var(--sub); font-size: .85rem; }
+  .err {
+    display: none;
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: var(--danger-weak);
+    color: var(--danger);
+    font-size: .85rem;
+  }
+  .err.show { display: block; }
+
+  /* ---- 按钮 ---- */
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--card);
+    color: var(--ink);
+    padding: 8px 18px;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  button.primary:not(:disabled):hover { filter: brightness(1.08); }
+  button.big {
+    width: 100%;
+    padding: 12px 0;
+    font-size: 1rem;
+  }
+  button.link {
+    border: none;
+    background: none;
+    color: var(--sub);
+    font-size: .82rem;
+    padding: 2px 4px;
+    text-decoration: underline;
+  }
+
+  /* ---- 表单 ---- */
+  label.field { display: block; margin-top: 18px; font-size: .88rem; font-weight: 600; }
+  label.field .opt { font-weight: 400; color: var(--sub); }
+  input[type=text], input[type=password] {
+    font: inherit;
+    width: 100%;
+    margin-top: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    color: var(--ink);
+  }
+  input:focus { outline: 2px solid var(--accent-weak); border-color: var(--accent); }
+  .row { display: flex; gap: 8px; margin-top: 6px; }
+  .row input { margin-top: 0; flex: 1; }
+
+  /* ---- 二维码区 ---- */
+  .qr-box { text-align: center; margin-top: 18px; }
+  .qr-box img {
+    max-width: 100%;
+    width: 220px;
+    height: 220px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .qr-state { margin-top: 10px; font-size: .9rem; color: var(--sub); }
+  .qr-state.ok { color: var(--accent); font-weight: 600; }
+
+  /* ---- 运行面板 ---- */
+  .run-head { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: #c0c5cb; flex: none;
+  }
+  .dot.on { background: var(--accent); animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .run-head .state-text { font-weight: 600; }
+  .kv { margin-top: 16px; font-size: .88rem; }
+  .kv div { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .kv div:last-child { border-bottom: none; }
+  .kv .k { color: var(--sub); flex: none; margin-right: 16px; }
+  .kv .v { text-align: right; word-break: break-all; }
+  .today-line {
+    margin-top: 16px;
+    padding: 10px 14px;
+    background: var(--accent-weak);
+    border-radius: 8px;
+    font-size: .92rem;
+  }
+  table.recent {
+    width: 100%;
+    margin-top: 16px;
+    border-collapse: collapse;
+    font-size: .88rem;
+  }
+  table.recent th, table.recent td {
+    text-align: left;
+    padding: 6px 4px;
+    border-bottom: 1px solid var(--line);
+  }
+  table.recent th { color: var(--sub); font-weight: 500; font-size: .8rem; }
+  table.recent td.num, table.recent th.num { text-align: right; }
+  .sealed-mark { color: var(--accent); }
+  .btn-row { display: flex; gap: 10px; margin-top: 20px; }
+  .btn-row button { flex: 1; }
+  .panel-foot { margin-top: 14px; text-align: right; }
+
+  footer {
+    margin-top: 32px;
+    text-align: center;
+    font-size: .78rem;
+    color: var(--sub);
+  }
+  footer a { color: var(--sub); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>wechat-diary</h1>
+    <p class="tagline">把微信里随手发的话, 变成你自己电脑上的日记</p>
+  </header>
+
+  <!-- session 过期 / 服务不可达 提示 -->
+  <div id="banner-expired" class="banner danger">
+    微信登录已失效, 请回到第一步重新扫码绑定。
+  </div>
+  <div id="banner-offline" class="banner warn">
+    无法连接本地服务, 请确认 wechat-diary 程序仍在运行。
+  </div>
+
+  <nav class="steps" aria-label="步骤">
+    <div class="step-tab" id="tab-1">① 绑定微信</div>
+    <div class="step-tab" id="tab-2">② 选文件夹</div>
+    <div class="step-tab" id="tab-3">③ 运行</div>
+  </nav>
+
+  <!-- ① 绑定微信 -->
+  <section class="card" id="step-1">
+    <h2>绑定微信</h2>
+    <p class="hint">用微信扫码登录, 之后发给「文件传输助手」式机器人的消息会写进你的日记。</p>
+    <div id="login-idle" style="margin-top:18px">
+      <button class="primary big" id="btn-login">生成登录二维码</button>
+    </div>
+    <div class="qr-box" id="qr-box" style="display:none">
+      <img id="qr-img" alt="微信登录二维码">
+      <p class="qr-state" id="qr-state">请用微信扫码并在手机上确认</p>
+      <div style="margin-top:10px; display:none" id="qr-retry-box">
+        <button id="btn-qr-retry">重新获取二维码</button>
+      </div>
+    </div>
+    <p class="err" id="err-1"></p>
+  </section>
+
+  <!-- ② 选文件夹 -->
+  <section class="card" id="step-2">
+    <h2>选择日记文件夹</h2>
+    <p class="hint">日记以 Markdown 文件保存在这个文件夹里, 推荐选你的 Obsidian 库目录。</p>
+    <label class="field" for="inp-dir">日记文件夹 (绝对路径)</label>
+    <div class="row">
+      <input type="text" id="inp-dir" placeholder="例如 /Users/me/Obsidian/diary" autocomplete="off" spellcheck="false">
+      <button id="btn-pick">浏览…</button>
+    </div>
+    <label class="field" for="inp-key">AI 润色 API Key <span class="opt">(可选, DeepSeek, 不填也完整可用)</span></label>
+    <input type="password" id="inp-key" placeholder="sk-…" autocomplete="off">
+    <div style="margin-top:6px; display:none" id="clear-key-box">
+      <span class="hint">已配置 AI Key。</span>
+      <button class="link" id="btn-clear-key">清除已保存的 Key</button>
+    </div>
+    <div style="margin-top:22px">
+      <button class="primary big" id="btn-save">保存并继续</button>
+    </div>
+    <p class="err" id="err-2"></p>
+  </section>
+
+  <!-- ③ 运行面板 -->
+  <section class="card" id="step-3">
+    <h2>运行</h2>
+    <div class="run-head">
+      <span class="dot" id="run-dot"></span>
+      <span class="state-text" id="run-text">已停止</span>
+    </div>
+    <div class="btn-row">
+      <button class="primary" id="btn-start">启动</button>
+      <button id="btn-stop">停止</button>
+    </div>
+    <div class="today-line" id="today-line">今天还没有记录</div>
+    <table class="recent" id="recent-table" style="display:none">
+      <thead><tr><th>日期</th><th class="num">条数</th><th>封存</th></tr></thead>
+      <tbody id="recent-body"></tbody>
+    </table>
+    <div class="kv">
+      <div><span class="k">提醒时间</span><span class="v" id="kv-remind">—</span></div>
+      <div><span class="k">微信账号</span><span class="v" id="kv-user">—</span></div>
+      <div><span class="k">日记文件夹</span><span class="v" id="kv-dir">—</span></div>
+      <div><span class="k">AI 润色</span><span class="v" id="kv-ai">未配置</span></div>
+    </div>
+    <div class="panel-foot">
+      <button class="link" id="btn-edit-config">修改文件夹 / AI Key</button>
+    </div>
+    <p class="err" id="err-3"></p>
+  </section>
+
+  <footer>
+    数据只在你自己的电脑上 ·
+    开源 <a href="https://github.com/ArtemisLin/wechat-diary" target="_blank" rel="noopener">github.com/ArtemisLin/wechat-diary</a>
+  </footer>
+</div>
+
+<script>
+"use strict";
+/* 后端启动时把 {{TOKEN}} 替换为本次运行的随机 token */
+window.AUTH_TOKEN = "{{TOKEN}}";
+
+/* ---------- 工具 ---------- */
+
+/* 统一请求封装: 所有请求带 X-Auth 头, 非 2xx 与网络错误一律抛出 */
+async function api(path, method, body) {
+  var headers = { "X-Auth": window.AUTH_TOKEN };
+  var opts = { method: method || "GET", headers: headers };
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+    opts.body = JSON.stringify(body);
+  }
+  var resp = await fetch(path, opts);
+  if (resp.status === 401) {
+    /* 程序重启过, 页面里的 token 已失效: 刷新即注入新 token 自愈
+       (服务真挂时 fetch 走网络错误分支, 不会触发这里, 无刷新死循环) */
+    location.reload();
+    throw new Error("HTTP 401");
+  }
+  if (!resp.ok) { throw new Error("HTTP " + resp.status); }
+  return resp.json();
+}
+
+function $(id) { return document.getElementById(id); }
+
+function showErr(id, msg) {
+  var el = $(id);
+  el.textContent = msg;
+  el.classList.add("show");
+}
+function clearErr(id) { $(id).classList.remove("show"); }
+
+/* ---------- 步骤切换 ---------- */
+
+var currentStep = 0;          /* 0 = 尚未定位 */
+var wasLoggedIn = false;      /* 曾经登录过 (用于识别 session 过期) */
+var loginFlowActive = false;  /* 扫码轮询进行中, 状态轮询不抢跳步骤 */
+var lastStatus = null;
+
+function goStep(n) {
+  currentStep = n;
+  for (var i = 1; i <= 3; i++) {
+    $("step-" + i).classList.toggle("show", i === n);
+    var tab = $("tab-" + i);
+    tab.classList.toggle("active", i === n);
+    tab.classList.toggle("done", i < n);
+  }
+}
+
+/* ---------- 状态轮询 ---------- */
+
+var statusBusy = false;
+
+async function refreshStatus(locate) {
+  if (statusBusy) { return; }
+  statusBusy = true;
+  try {
+    var st = await api("/api/status");
+    $("banner-offline").classList.remove("show");
+    lastStatus = st;
+    handleStatus(st, locate);
+  } catch (e) {
+    /* 本地服务失联: 顶部提示, 不打断当前页面 */
+    $("banner-offline").classList.add("show");
+  } finally {
+    statusBusy = false;
+  }
+}
+
+function handleStatus(st, locate) {
+  renderPanel(st);
+  prefillConfig(st);
+
+  if (st.logged_in) {
+    wasLoggedIn = true;
+    $("banner-expired").classList.remove("show");
+  } else if (wasLoggedIn && !loginFlowActive) {
+    /* session 过期: 显眼提示并回第一步重新扫码 */
+    $("banner-expired").classList.add("show");
+    resetLoginUI();
+    goStep(1);
+    return;
+  }
+
+  if (locate || currentStep === 0) {
+    /* 首次加载: 按状态定位到对应步骤 */
+    if (!st.logged_in) { goStep(1); }
+    else if (!st.diary_dir_ok) { goStep(2); }
+    else { goStep(3); }
+  }
+}
+
+function prefillConfig(st) {
+  var inp = $("inp-dir");
+  if (st.diary_dir && !inp.value && document.activeElement !== inp) {
+    inp.value = st.diary_dir;
+  }
+  $("clear-key-box").style.display = st.ai_key_set ? "" : "none";
+}
+
+/* ---------- 第 ① 步: 扫码登录 ---------- */
+
+var loginPollTimer = null;
+var loginPollFails = 0;
+var loginStatusFails = 0;    /* 后端返回 status=error 的连续次数 (瞬时网络抖动容错) */
+var loginPollBusy = false;   /* 防止上一次 poll 未返回时叠发请求 */
+
+function resetLoginUI() {
+  stopLoginPoll();
+  $("login-idle").style.display = "";
+  $("btn-login").disabled = false;
+  $("qr-box").style.display = "none";
+  $("qr-retry-box").style.display = "none";
+  clearErr("err-1");
+}
+
+function stopPollTimer() {
+  if (loginPollTimer) { clearInterval(loginPollTimer); loginPollTimer = null; }
+}
+
+function stopLoginPoll() {
+  loginFlowActive = false;
+  stopPollTimer();
+}
+
+function setQrState(text, ok) {
+  var el = $("qr-state");
+  el.textContent = text;
+  el.classList.toggle("ok", !!ok);
+}
+
+async function startLogin() {
+  clearErr("err-1");
+  $("btn-login").disabled = true;
+  $("btn-qr-retry").disabled = true;
+  try {
+    var r = await api("/api/login/start", "POST", {});
+    if (!r.ok || !r.qr_img_url) {
+      showErr("err-1", "获取二维码失败: " + (r.error || "未知原因") + ", 请稍后重试");
+      $("btn-login").disabled = false;
+      $("btn-qr-retry").disabled = false;
+      return;
+    }
+    $("login-idle").style.display = "none";
+    $("qr-box").style.display = "";
+    $("qr-retry-box").style.display = "none";
+    $("qr-img").src = r.qr_img_url;
+    setQrState("请用微信扫码并在手机上确认", false);
+    loginFlowActive = true;
+    loginPollFails = 0;
+    loginStatusFails = 0;
+    loginPollBusy = false;
+    loginPollTimer = setInterval(pollLogin, 2000);
+    $("btn-qr-retry").disabled = false;
+  } catch (e) {
+    showErr("err-1", "无法连接本地服务, 请确认程序仍在运行后重试");
+    $("btn-login").disabled = false;
+    $("btn-qr-retry").disabled = false;
+  }
+}
+
+async function pollLogin() {
+  if (loginPollBusy) { return; }
+  loginPollBusy = true;
+  var r;
+  try {
+    r = await api("/api/login/poll");
+    loginPollFails = 0;
+  } catch (e) {
+    loginPollBusy = false;
+    loginPollFails++;
+    if (loginPollFails >= 5) {
+      stopLoginPoll();
+      setQrState("连不上本地服务, 请确认程序仍在运行", false);
+      $("qr-retry-box").style.display = "";
+    } else {
+      setQrState("网络请求失败, 正在重试…", false);
+    }
+    return;
+  }
+  loginPollBusy = false;
+  if (r.status === "waiting") {
+    loginStatusFails = 0;
+    setQrState("请用微信扫码并在手机上确认", false);
+  } else if (r.status === "confirmed") {
+    stopLoginPoll();
+    setQrState("✓ 绑定成功", true);
+    $("banner-expired").classList.remove("show");
+    wasLoggedIn = true;
+    /* 拿最新状态决定去第 2 步还是直达面板 (重新扫码场景) */
+    setTimeout(async function () {
+      await refreshStatus(false);
+      if (lastStatus && lastStatus.diary_dir_ok) { goStep(3); }
+      else { goStep(2); }
+      resetLoginUI();
+    }, 600);
+  } else if (r.status === "expired") {
+    /* 终态只停计时器, 保持 loginFlowActive: 状态轮询不许抹掉重试界面 */
+    stopPollTimer();
+    setQrState("二维码已过期", false);
+    $("qr-retry-box").style.display = "";
+  } else if (r.status === "canceled") {
+    stopPollTimer();
+    setQrState("你在手机上取消了登录", false);
+    $("qr-retry-box").style.display = "";
+  } else {
+    /* status=error 多为 iLink 瞬时超时 (CLI login 同款场景是重试而非放弃):
+       连续 5 次才停下提示, 偶发抖动自愈 */
+    loginStatusFails++;
+    if (loginStatusFails >= 5) {
+      stopPollTimer();
+      setQrState("查询登录状态出错, 请重试", false);
+      $("qr-retry-box").style.display = "";
+    } else {
+      setQrState("查询超时, 正在重试…", false);
+    }
+  }
+}
+
+$("btn-login").addEventListener("click", startLogin);
+$("btn-qr-retry").addEventListener("click", startLogin);
+
+/* ---------- 第 ② 步: 文件夹与配置 ---------- */
+
+$("btn-pick").addEventListener("click", async function () {
+  clearErr("err-2");
+  var btn = $("btn-pick");
+  btn.disabled = true;
+  try {
+    var r = await api("/api/folder/pick", "POST", {});
+    if (r.ok && r.path) {
+      $("inp-dir").value = r.path;
+    } else if (r.canceled) {
+      /* 用户自己关掉了选择框, 不是错误, 安静返回 */
+    } else {
+      showErr("err-2", "无法打开系统文件夹选择框, 请在输入框里手动填写绝对路径");
+      $("inp-dir").focus();
+    }
+  } catch (e) {
+    showErr("err-2", "无法连接本地服务, 请手动填写路径或稍后重试");
+    $("inp-dir").focus();
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("btn-save").addEventListener("click", async function () {
+  clearErr("err-2");
+  var dir = $("inp-dir").value.trim();
+  if (!dir) {
+    showErr("err-2", "请先填写日记文件夹的绝对路径");
+    $("inp-dir").focus();
+    return;
+  }
+  var body = { diary_dir: dir };
+  var key = $("inp-key").value.trim();
+  if (key) { body.ai_api_key = key; }
+  var btn = $("btn-save");
+  btn.disabled = true;
+  try {
+    var r = await api("/api/config", "POST", body);
+    if (r.ok) {
+      $("inp-key").value = "";
+      await refreshStatus(false);
+      goStep(3);
+    } else {
+      showErr("err-2", "保存失败: " + (r.error || "路径无效或不可写, 请检查后重试"));
+    }
+  } catch (e) {
+    showErr("err-2", "保存请求失败, 请确认程序仍在运行后重试");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ---------- 第 ③ 步: 运行面板 ---------- */
+
+function fmtHour(h) {
+  return (h < 10 ? "0" + h : "" + h) + ":00";
+}
+
+function renderPanel(st) {
+  var running = !!st.bot_running;
+  var stopping = !!st.bot_stopping;
+  $("run-dot").classList.toggle("on", running && !stopping);
+  if (stopping) {
+    $("run-text").textContent = "正在停止…";
+  } else if (running) {
+    $("run-text").textContent = "运行中";
+  } else {
+    /* 线程死亡原因直接摆在面板上, 不让 bot 静默消失 */
+    $("run-text").textContent = st.last_error ? "已停止 · " + st.last_error : "已停止";
+  }
+  $("btn-start").disabled = running && !stopping;
+  $("btn-stop").disabled = !running || stopping;
+
+  var t = st.today || {};
+  if (t.count > 0) {
+    $("today-line").textContent = "今天 (" + (t.date || "") + ") 已记 " + t.count + " 条" + (t.sealed ? " · 已封存" : "");
+  } else {
+    $("today-line").textContent = "今天还没有记录";
+  }
+
+  var recent = st.recent || [];
+  var table = $("recent-table");
+  var body = $("recent-body");
+  body.textContent = "";
+  if (recent.length > 0) {
+    table.style.display = "";
+    for (var i = 0; i < recent.length; i++) {
+      var d = recent[i];
+      var tr = document.createElement("tr");
+      var td1 = document.createElement("td");
+      td1.textContent = d.date || "";
+      var td2 = document.createElement("td");
+      td2.className = "num";
+      td2.textContent = (d.count == null ? "—" : d.count + " 条");
+      var td3 = document.createElement("td");
+      if (d.sealed) { td3.textContent = "✓"; td3.className = "sealed-mark"; }
+      else { td3.textContent = "—"; }
+      tr.appendChild(td1); tr.appendChild(td2); tr.appendChild(td3);
+      body.appendChild(tr);
+    }
+  } else {
+    table.style.display = "none";
+  }
+
+  var rh = st.remind_hours || [];
+  $("kv-remind").textContent = rh.length ? rh.map(fmtHour).join(" · ") : "—";
+  $("kv-user").textContent = st.user_id_masked || "—";
+  $("kv-dir").textContent = st.diary_dir || "—";
+  $("kv-ai").textContent = st.ai_key_set ? "已配置" : "未配置 (可选)";
+}
+
+$("btn-start").addEventListener("click", async function () {
+  clearErr("err-3");
+  $("btn-start").disabled = true;
+  try {
+    var r = await api("/api/bot/start", "POST", {});
+    if (!r.ok) {
+      showErr("err-3", "启动失败: " + (r.error || "请确认已扫码登录且日记文件夹有效"));
+      $("btn-start").disabled = false;
+      return;
+    }
+    await refreshStatus(false);
+  } catch (e) {
+    showErr("err-3", "启动请求失败, 请确认程序仍在运行后重试");
+    $("btn-start").disabled = false;
+  }
+});
+
+$("btn-stop").addEventListener("click", async function () {
+  clearErr("err-3");
+  $("btn-stop").disabled = true;
+  try {
+    await api("/api/bot/stop", "POST", {});
+    await refreshStatus(false);
+  } catch (e) {
+    showErr("err-3", "停止请求失败, 请确认程序仍在运行后重试");
+    $("btn-stop").disabled = false;
+  }
+});
+
+$("btn-edit-config").addEventListener("click", function () {
+  clearErr("err-2");
+  goStep(2);
+});
+
+$("btn-clear-key").addEventListener("click", async function () {
+  clearErr("err-2");
+  var btn = $("btn-clear-key");
+  btn.disabled = true;
+  try {
+    var r = await api("/api/config", "POST", { ai_api_key: "" });
+    if (r.ok) {
+      $("inp-key").value = "";
+      await refreshStatus(false);
+    } else {
+      showErr("err-2", "清除失败: " + (r.error || "请稍后重试"));
+    }
+  } catch (e) {
+    showErr("err-2", "清除请求失败, 请确认程序仍在运行后重试");
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+/* ---------- 启动 ---------- */
+
+refreshStatus(true);
+setInterval(function () { refreshStatus(false); }, 5000);
+</script>
+</body>
+</html>
