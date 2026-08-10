@@ -5,9 +5,15 @@ Phase 0.5: ilink_state.json / welcomed_users.json / ilink_debug.log
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    # PyInstaller 打包态: 运行时文件 (data/ 与 .env) 放 exe 旁边 (便携式布局),
+    # 绝不能放临时解包目录 —— onefile 每次运行解到不同的临时目录, 状态会全丢
+    ROOT = Path(sys.executable).resolve().parent
+else:
+    ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 LOGS_DIR = DATA_DIR / "logs"
 

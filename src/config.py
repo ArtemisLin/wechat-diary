@@ -33,7 +33,11 @@ def _load_env_file(path: Path) -> None:
         os.environ.setdefault(k, v)
 
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if getattr(sys, "frozen", False):
+    # PyInstaller 打包态: .env 在 exe 旁边 (与 paths.ROOT 同一逻辑)
+    PROJECT_ROOT = Path(sys.executable).resolve().parent
+else:
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _load_env_file(PROJECT_ROOT / ".env")
 
 # === 时区 ===

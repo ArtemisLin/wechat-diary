@@ -38,7 +38,11 @@ import paths
 DEFAULT_PORT = 8765
 TOKEN = secrets.token_hex(16)
 ENV_PATH = paths.ROOT / ".env"
-WEB_DIR = Path(__file__).resolve().parent / "web"
+if getattr(sys, "frozen", False):
+    # PyInstaller 打包态: 前端静态文件在解包目录里 (spec 的 datas 塞进去的)
+    WEB_DIR = Path(getattr(sys, "_MEIPASS")) / "web"
+else:
+    WEB_DIR = Path(__file__).resolve().parent / "web"
 INDEX_FILE = WEB_DIR / "index.html"
 QRCODE_JS = WEB_DIR / "qrcode.js"  # qrcode-generator (MIT, Kazuhiko Arase), 本地伺服零外链
 ALLOWED_HOSTS = {"127.0.0.1", "localhost"}

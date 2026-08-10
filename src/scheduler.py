@@ -10,6 +10,7 @@ import os
 from typing import Callable
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 import config
 import diary_writer
@@ -92,15 +93,18 @@ def make_reminder_job(text_template: str, send_fn: Callable[[str, str], bool]) -
 def create_scheduler(send_fn: Callable[[str, str], bool]) -> BackgroundScheduler:
     """创建 APScheduler, 注册 REMIND_HOUR_1 / REMIND_HOUR_2 两个北京时间 cron。
     send_fn(user_id, text) 注入以便测试。"""
+    # 显式 CronTrigger 而非 trigger="cron" 字符串: 字符串形式经 setuptools
+    # entry points 动态解析, PyInstaller 打包态下会找不到; 显式导入两态都稳。
+    # timezone 必须显式传给 Trigger —— 手工构造的 Trigger 不继承 scheduler 的时区
     sched = BackgroundScheduler(timezone=config.TIMEZONE)
     sched.add_job(
         make_reminder_job(REMIND_TEXT_1_TEMPLATE, send_fn),
-        trigger="cron", hour=config.REMIND_HOUR_1, minute=0,
+        trigger=CronTrigger(hour=config.REMIND_HOUR_1, minute=0, timezone=config.TZ),
         id="remind_1", replace_existing=True,
     )
     sched.add_job(
         make_reminder_job(REMIND_TEXT_2_TEMPLATE, send_fn),
-        trigger="cron", hour=config.REMIND_HOUR_2, minute=0,
+        trigger=CronTrigger(hour=config.REMIND_HOUR_2, minute=0, timezone=config.TZ),
         id="remind_2", replace_existing=True,
     )
     return sched

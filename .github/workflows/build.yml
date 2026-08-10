@@ -1,0 +1,63 @@
+name: build
+
+# 打包单文件应用: Windows exe + macOS 可执行。
+# 手动触发 (workflow_dispatch) 出验证包 (Actions 页面下载 artifact);
+# 推 v* tag 则同时发布到 GitHub Releases (最终用户下载入口)。
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: wechat-diary-windows
+          - os: macos-latest
+            artifact: wechat-diary-macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt pyinstaller
+      - run: pyinstaller wechat-diary.spec --noconfirm
+      - name: smoke test binary
+        shell: bash
+        run: |
+          ./dist/wechat-diary* --no-browser &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8765/ >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8765/ | grep -q AUTH_TOKEN
+          curl -sf -o /dev/null http://127.0.0.1:8765/qrcode.js
+          echo "smoke ok"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/*
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: pkg
+      - name: rename per platform
+        run: |
+          mv pkg/wechat-diary-windows/wechat-diary.exe pkg/wechat-diary-windows.exe
+          mv pkg/wechat-diary-macos/wechat-diary pkg/wechat-diary-macos
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            pkg/wechat-diary-windows.exe
+            pkg/wechat-diary-macos
