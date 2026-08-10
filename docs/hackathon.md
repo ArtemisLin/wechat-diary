@@ -77,6 +77,9 @@ claude mcp add wechat-diary -- python /abs/path/wechat-diary/src/mcp_server.py
   date_to)` / `diary_recent(n)`; 写入在架构上只有微信管道一条路 (mcp_server.py
   不 import 任何写入模块)
 - 演示库 `docs/demo-vault/` 为标注明确的合成数据, 严格遵守数据契约
+- 远程评测入口: `python src/mcp_http.py` 为同一 server 的 Streamable HTTP
+  外壳 (无状态, POST JSON-RPC), 复用全部只读逻辑, 默认同样只服务演示库;
+  赛事提交的"自建 MCP"地址即此服务经隧道公网化的 URL
 
 **测试与工程质量**:
 
