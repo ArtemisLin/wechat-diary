@@ -69,8 +69,13 @@ ilink.py 新增两个小函数 (不动现有 login(), 竞赛期最小改动面):
 
 tkinter 的 filedialog 在 macOS 上必须跑主线程, HTTP handler 是子线程 → 崩。
 方案: **子进程隔离** —— darwin 用 `osascript` (choose folder), Windows 用
-`python -c "...tkinter askdirectory..."` 子进程, 其他平台返回 ok:false。
+系统自带 PowerShell 弹 FolderBrowserDialog, 其他平台返回 ok:false。
 前端始终保留手动输入路径作为兜底。
+
+⚠️ Windows 绝不能用 `[sys.executable, "-c", ...]` spawn Python 子进程:
+PyInstaller 打包态下 sys.executable 是本 exe 自己 → 每点一次"浏览"就把程序
+再启动一份 (v2 Windows 真机实测事故)。同理 Windows 上 http.server 默认的
+SO_REUSEADDR 会让第二个实例静默绑上同一端口, WebUIServer 已在 win32 关掉。
 
 ## .env 写入 (src/envfile.py)
 

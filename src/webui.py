@@ -380,24 +380,28 @@ def api_folder_pick() -> dict:
         return {"ok": True, "path": path.rstrip("/") or "/"}
 
     if sys.platform == "win32":
-        code = (
-            "import tkinter as tk\n"
-            "from tkinter import filedialog\n"
-            "root = tk.Tk()\n"
-            "root.withdraw()\n"
-            "root.attributes('-topmost', True)\n"
-            "print(filedialog.askdirectory())\n"
+        # 用系统自带 PowerShell 弹原生对话框。绝不能用 [sys.executable, "-c"]:
+        # PyInstaller 打包态下 sys.executable 是本 exe 自己, 会把程序再启动
+        # 一份、每点一次"浏览"多开一个浏览器标签页 (Windows 真机实测事故)
+        ps = (
+            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;"
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            "$w = New-Object System.Windows.Forms.Form; $w.TopMost = $true;"
+            "$f = New-Object System.Windows.Forms.FolderBrowserDialog;"
+            "$f.Description = 'Select diary folder';"
+            "if ($f.ShowDialog($w) -eq [System.Windows.Forms.DialogResult]::OK)"
+            " { Write-Output $f.SelectedPath }"
         )
         try:
             proc = subprocess.run(
-                [sys.executable, "-c", code],
-                capture_output=True, text=True, timeout=300,
+                ["powershell", "-NoProfile", "-STA", "-Command", ps],
+                capture_output=True, timeout=300,
             )
         except (OSError, subprocess.TimeoutExpired):
             return {"ok": False}
-        path = (proc.stdout or "").strip()
+        path = (proc.stdout or b"").decode("utf-8", "replace").strip()
         if proc.returncode != 0 or not path:
-            # tkinter askdirectory 用户取消: 正常退出但输出空串
+            # 用户取消: PowerShell 正常退出但没有输出路径
             return {"ok": False, "canceled": proc.returncode == 0 and not path}
         return {"ok": True, "path": path}
 
@@ -574,6 +578,9 @@ class WebUIHandler(BaseHTTPRequestHandler):
 
 class WebUIServer(ThreadingHTTPServer):
     daemon_threads = True  # handler 线程不阻塞进程退出
+    # Windows 的 SO_REUSEADDR 语义不同: 会允许第二个进程绑上已占用的端口,
+    # 双实例静默并存、页面行为错乱。关掉让第二个实例得到明确的"端口被占用"
+    allow_reuse_address = sys.platform != "win32"
 
 
 def create_server(port: int | None = None) -> WebUIServer:
