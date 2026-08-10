@@ -243,7 +243,11 @@
     </div>
     <div class="qr-box" id="qr-box" style="display:none">
       <img id="qr-img" alt="微信登录二维码">
-      <p class="qr-state" id="qr-state">请用微信扫码并在手机上确认</p>
+      <p class="qr-state" id="qr-state">请用微信「扫一扫」扫码, 并在手机上确认</p>
+      <p style="margin-top:8px">
+        <a id="qr-page-link" href="#" target="_blank" rel="noopener"
+           style="font-size:.82rem; color:var(--sub)">扫不出来? 打开官方二维码页面</a>
+      </p>
       <div style="margin-top:10px; display:none" id="qr-retry-box">
         <button id="btn-qr-retry">重新获取二维码</button>
       </div>
@@ -306,6 +310,7 @@
   </footer>
 </div>
 
+<script src="/qrcode.js"></script>
 <script>
 "use strict";
 /* 后端启动时把 {{TOKEN}} 替换为本次运行的随机 token */
@@ -455,8 +460,20 @@ async function startLogin() {
     $("login-idle").style.display = "none";
     $("qr-box").style.display = "";
     $("qr-retry-box").style.display = "none";
-    $("qr-img").src = r.qr_img_url;
-    setQrState("请用微信扫码并在手机上确认", false);
+    /* iLink 返回的是"二维码页面"的链接不是图片文件, 所以在本地把链接画成
+       二维码 (微信扫链接二维码 → 在微信内打开该页 → 触发确认流程);
+       画不出来时隐藏图片, 用户走下方"官方二维码页面"链接 (等价于 CLI 流程) */
+    $("qr-page-link").href = r.qr_img_url;
+    try {
+      var q = qrcode(0, "M");
+      q.addData(r.qr_img_url);
+      q.make();
+      $("qr-img").src = q.createDataURL(6, 8);
+      $("qr-img").style.display = "";
+    } catch (qe) {
+      $("qr-img").style.display = "none";
+    }
+    setQrState("请用微信「扫一扫」扫码, 并在手机上确认", false);
     loginFlowActive = true;
     loginPollFails = 0;
     loginStatusFails = 0;

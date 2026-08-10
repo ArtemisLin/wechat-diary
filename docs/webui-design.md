@@ -21,10 +21,14 @@ python src/webui.py
 - 现有 CLI 入口 (main.py / ilink.py login / start.bat) 原样保留, webui 是并列入口
 - 消息路由完整复用 main.py 的 `_on_message` (import main, 不复制业务逻辑)
 
-## 登录流程 (关键发现)
+## 登录流程
 
-`GET /ilink/bot/get_bot_qrcode?bot_type=3` 返回的 `qrcode_img_content` 就是
-二维码图片 URL —— 网页 `<img src>` 直接显示。登录状态轮询是无状态 GET,
+`GET /ilink/bot/get_bot_qrcode?bot_type=3` 返回的 `qrcode_img_content` 是一个
+**二维码页面的链接** (text/html, 页面里用 JS 现画二维码), 不是图片文件——
+不能直接塞 `<img src>` (v1 联调实测破图)。方案: 前端用本地内置的
+qrcode-generator (MIT, `src/web/qrcode.js`, 后端 `/qrcode.js` 伺服) 把该链接
+画成二维码, 微信扫链接码 → 微信内打开该页 → 触发确认; 另附「打开官方二维码
+页面」链接兜底 (新标签页打开, 等价于 CLI 流程)。登录状态轮询是无状态 GET,
 由浏览器 JS 驱动 (每 2s 调一次后端, 后端单次查询 iLink)。
 
 `confirmed` 时后端自动: 保存 ilink state + **把 ilink_user_id 写进 .env 的

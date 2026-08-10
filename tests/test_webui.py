@@ -440,3 +440,8 @@ def test_login_start_requires_qr_img_url(client, monkeypatch):
                         lambda: {"qrcode": "abc", "qr_img_url": ""})
     _, resp = request(client.port, "POST", "/api/login/start", token=client.token, body={})
     assert resp["ok"] is False
+
+
+def test_qrcode_js_served_without_auth(client):
+    status, _ = request(client.port, "GET", "/qrcode.js")
+    assert status == 200

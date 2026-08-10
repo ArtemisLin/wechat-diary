@@ -38,7 +38,9 @@ import paths
 DEFAULT_PORT = 8765
 TOKEN = secrets.token_hex(16)
 ENV_PATH = paths.ROOT / ".env"
-INDEX_FILE = Path(__file__).resolve().parent / "web" / "index.html"
+WEB_DIR = Path(__file__).resolve().parent / "web"
+INDEX_FILE = WEB_DIR / "index.html"
+QRCODE_JS = WEB_DIR / "qrcode.js"  # qrcode-generator (MIT, Kazuhiko Arase), 本地伺服零外链
 ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
 SEAL_MARKER = "_(今日封存于"  # 与 mcp_server.recent / diary_writer.CLOSING_MARKER 一致
 
@@ -511,6 +513,19 @@ class WebUIHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         if path == "/":
             self._send_html(render_index())
+            return
+        if path == "/qrcode.js":
+            # 登录二维码在前端本地生成 (iLink 给的是网页链接不是图片, 见设计文档)
+            if QRCODE_JS.exists():
+                data = QRCODE_JS.read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/javascript; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            self._send_json({"ok": False, "error": "not found"}, status=404)
             return
         if path.startswith("/api/"):
             if not self._guard_api():
