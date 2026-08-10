@@ -90,6 +90,25 @@ python ilink.py login
 - 用 Obsidian 的话, 开 Daily Notes 插件, 日期格式设为 `YYYY/YYYY-MM-DD`
 - 回顾 / 检索 / 周报交给你自己的 Agent 在库上做, 本项目不做也不干涉
 
+## MCP 接口 (只读)
+
+"用什么 Agent 管理这个库是你的自由"——`src/mcp_server.py` 是这句话的工程兑现:
+一个零依赖的只读 MCP server, 任何支持 MCP 的客户端 (Claude Code / Codex / ...)
+接上即可读日记, 不必自己解析数据契约。
+
+```bash
+# Claude Code 一行接入
+claude mcp add wechat-diary -- python /绝对路径/wechat-diary/src/mcp_server.py
+```
+
+三个工具: `diary_read(date)` 读某天原文 / `diary_search(query, ...)` 全库检索 /
+`diary_recent(n)` 近况概览。`DIARY_DIR` 读 `.env`, 也可用环境变量覆盖
+(如接演示库: `DIARY_DIR=docs/demo-vault`)。
+
+**只读是硬约束**: 该文件不 import 任何写入模块, 任何 MCP 客户端都无法通过
+本接口写入或修改日记——本项目自身的写入永远只有微信管道一条路。(你的 Agent
+当然仍可直接编辑 vault 里的文件, 那是你的库、你的自由。)
+
 ## 网络兼容
 
 - **iLink API 强制直连**: `ilinkai.weixin.qq.com` 走 Clash 会出现 TLS 中间层延迟、
@@ -134,9 +153,11 @@ wechat-diary/
 │   ├── scheduler.py       # 提醒 + 启动补偿
 │   ├── welcome.py         # 全部文案
 │   ├── user_profile.py    # 用户名字 + 状态机持久化
+│   ├── mcp_server.py      # 只读 MCP server (零依赖)
 │   └── main.py            # 入口
 ├── scripts/migrate_v2.py  # v1 → v2 存量迁移
 ├── docs/data-contract.md  # 数据契约 (对 Agent 的接口承诺)
+├── docs/demo-vault/       # 演示日记库 (合成数据, 供体验与评测)
 ├── tests/                 # pytest 单测
 ├── start.bat              # 双击启动 (Windows)
 ├── data/                  # 运行时生成 (勿入 git)
