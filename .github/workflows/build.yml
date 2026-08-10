@@ -53,11 +53,13 @@ jobs:
         with:
           path: pkg
       - name: rename per platform
+        # 不能原地改名: pkg/wechat-diary-macos 已是 artifact 目录, 会撞名
         run: |
-          mv pkg/wechat-diary-windows/wechat-diary.exe pkg/wechat-diary-windows.exe
-          mv pkg/wechat-diary-macos/wechat-diary pkg/wechat-diary-macos
+          mkdir out
+          mv pkg/wechat-diary-windows/wechat-diary.exe out/wechat-diary-windows.exe
+          mv pkg/wechat-diary-macos/wechat-diary out/wechat-diary-macos
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            pkg/wechat-diary-windows.exe
-            pkg/wechat-diary-macos
+            out/wechat-diary-windows.exe
+            out/wechat-diary-macos
