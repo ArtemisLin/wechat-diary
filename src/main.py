@@ -18,6 +18,7 @@ import chat_handler
 import config  # noqa: 入口脚本初始化编码/env
 import diary_writer
 import ilink
+import names
 import paths
 import session_state
 import user_profile
@@ -82,12 +83,24 @@ def _handle(user_id: str, text: str, is_voice: bool) -> str | None:
     if intent is Intent.START_DIARY:
         session_state.enter_diary(user_id)
         chat_handler.reset_history(user_id)
-        return welcome.random_enter_diary()
+        reply = welcome.random_enter_diary()
+        # 「叫我小明, 开始记日记」: 同句里的显式称呼别丢
+        inline_name = names.extract_explicit(text)
+        if inline_name:
+            user_profile.set_name(user_id, inline_name)
+            reply = f"{reply}\n\n{welcome.NAME_INLINE_CONFIRM_TEMPLATE.format(name=inline_name)}"
+        return reply
 
     if intent is Intent.UNDO:
         return welcome.NOT_IN_DIARY_HINTS["undo"]
     if intent is Intent.FINALIZE:
         return welcome.NOT_IN_DIARY_HINTS["finalize"]
+
+    # 显式「叫我XX」→ 设置/修改称呼 (规则引擎, 仅 chat 模式; diary 模式照记不误)
+    new_name = names.extract_explicit(text)
+    if new_name:
+        user_profile.set_name(user_id, new_name)
+        return welcome.RENAME_CONFIRM_TEMPLATE.format(name=new_name)
 
     if intent is Intent.CHAT:
         # 招呼词走静态回复池 (省 LLM 开销)
@@ -109,18 +122,50 @@ def _dispatch(user_id: str, text: str, is_voice: bool) -> str | None:
 
     profile = user_profile.load(user_id)
 
+    # 已在 diary 模式的非 active 用户 (老版本迁移当天等场景): 内容优先,
+    # 取名/欢迎流程不得吞掉日记 —— 直接走主路由
+    if profile.state != "active" and session_state.load_or_reset(user_id).mode == "diary":
+        return _handle(user_id, text, is_voice)
+
     # 首次见面 (unknown): 发欢迎致辞 + 问名字, 不处理本次消息
     if profile.state == "unknown":
         user_profile.mark_welcomed(user_id)
         return welcome.WELCOME_TEXT
 
-    # 等待取名 (awaiting_name): 把本次消息当名字处理
+    # 等待取名 (awaiting_name): 命令优先, 之后才尝试从回答里提取名字
     if profile.state == "awaiting_name":
-        candidate = text.strip()
-        if not candidate or len(candidate) > welcome.NAME_MAX_LEN:
-            return welcome.NAME_TOO_LONG_HINT
-        user_profile.set_name(user_id, candidate)
-        return welcome.NAME_CONFIRM_TEMPLATE.format(name=candidate)
+        intent = detect(text)
+        if intent is Intent.HELP:
+            return f"{welcome.HELP_TEXT}\n\n{welcome.STILL_AWAITING_NAME_HINT}"
+        if intent is Intent.CHAT:
+            return f"{welcome.random_greeting()}\n\n{welcome.STILL_AWAITING_NAME_HINT}"
+        if intent in (Intent.FINALIZE, Intent.UNDO):
+            # 误发的一次性命令不终结取名流程: 答复 + 继续等名字
+            hint_key = "undo" if intent is Intent.UNDO else "finalize"
+            return f"{welcome.NOT_IN_DIARY_HINTS[hint_key]}\n\n{welcome.STILL_AWAITING_NAME_HINT}"
+        if intent is Intent.START_DIARY:
+            # 取名不拦路: 放行命令; 同句里带了名字 (「叫我小明, 开始记日记」) 先收下
+            name, _ = names.extract(text)
+            if name:
+                user_profile.set_name(user_id, name)
+            else:
+                user_profile.skip_naming(user_id)
+            reply = _handle(user_id, text, is_voice)
+            if reply:
+                tail = welcome.NAME_INLINE_CONFIRM_TEMPLATE.format(name=name) if name else welcome.NAME_LATER_HINT
+                reply = f"{reply}\n\n{tail}"
+            return reply
+
+        name, refused = names.extract(text)
+        if refused:
+            user_profile.skip_naming(user_id)
+            return welcome.NAME_SKIPPED_REPLY
+        if name is None and config.AI_API_KEY:
+            name = names.llm_extract(text)
+        if name is None:
+            return welcome.NAME_UNCLEAR_HINT
+        user_profile.set_name(user_id, name)
+        return welcome.NAME_CONFIRM_TEMPLATE.format(name=name)
 
     # 正常状态 (active): 走主路由
     return _handle(user_id, text, is_voice)

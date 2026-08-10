@@ -7,9 +7,6 @@ on:
   workflow_dispatch:
   push:
     tags: ["v*"]
-    # 开发期: 推本分支即构建 (workflow_dispatch 要求文件在默认分支, 这里绕开);
-    # 合入 main 后可删掉这行
-    branches: ["feat/hackathon-mcp"]
 
 jobs:
   build:

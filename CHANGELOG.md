@@ -1,6 +1,6 @@
 # Changelog
 
-## v2.0.0 (2026-07)
+## v2.0.0 (2026-08)
 
 定位收敛: "微信 → 你自己的 Obsidian vault" 的开源个人日记管道。
 
@@ -8,6 +8,13 @@
 - 数据契约 v1: 按年目录 DIARY_DIR/YYYY/ + YAML frontmatter + 语音 🎤 标记
   (见 docs/data-contract.md); 附存量迁移脚本 scripts/migrate_v2.py
 - 可靠性: 心跳时间戳 + 启动离线间隔提示; 错过提醒的启动补偿 (每天至多一次)
+- 只读 MCP server: diary_read / diary_search / diary_recent, 零依赖 stdio,
+  物理上无写入路径; 附合成数据演示库 docs/demo-vault/
+- 本地 Web UI 三步向导: 扫码绑微信 → 选文件夹 → 启停面板 (127.0.0.1, 零依赖)
+- 单文件打包: PyInstaller 出 Windows exe + macOS 可执行, 下载双击即用
+- 取名流程智能化: 「叫我谷雨就行」能提取出「谷雨」, 「帮助」等命令词不再被
+  误当名字, 不想要称呼可「跳过」, 闲聊模式随时「叫我XX」设置/修改称呼
+- 一次发送 = 一段: 平台拆分的长消息合并接收, 块内空行归一, 不再被记成多段
 - 开源配套: MIT LICENSE / requirements.txt / CI
 
 ## v1.x (2026-04 前)

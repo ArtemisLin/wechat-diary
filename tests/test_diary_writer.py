@@ -408,3 +408,75 @@ def test_voice_message_marked_in_file(setup):
     content = _today_path(config, vault).read_text(encoding="utf-8")
     assert "🎤 语音内容" in content
     assert "🎤 文字内容" not in content
+
+# === 大修 2026-08-10: 一次发送 = 一个块 = 一段 ===
+
+def test_multiline_polish_counts_as_one_message(setup, monkeypatch):
+    """LLM 润色分了多个空行段落 → 归一成单换行, 整条只算 1 段。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: "14:30")
+    with patch.object(diary_writer, "_call_llm", return_value="第一行\n\n第二行\n\n第三行"):
+        reply, n = diary_writer.write("u-abc", "很长的原文" * 50, is_voice=False)
+    assert n == 1, f"一次发送应只算 1 段, 实际: {n}"
+    path = _today_path(config, vault)
+    content = path.read_text(encoding="utf-8")
+    assert "第一行\n第二行\n第三行" in content, f"块内应为单换行:\n{content}"
+    assert diary_writer.count_messages(path) == 1
+
+
+def test_raw_multiparagraph_zero_key_counts_as_one(setup, monkeypatch):
+    """零 key 模式下用户发含空行的多段文本 → 也只算 1 段。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "AI_API_KEY", "")
+    _, n = diary_writer.write("u-abc", "上半段\n\n下半段", is_voice=False)
+    assert n == 1
+    assert diary_writer.count_messages(_today_path(config, vault)) == 1
+
+
+def test_crlf_normalized(setup, monkeypatch):
+    """\\r\\n 换行归一为 \\n, \\r\\n\\r\\n 空行同样收敛。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "AI_API_KEY", "")
+    _, n = diary_writer.write("u-abc", "上半段\r\n\r\n下半段", is_voice=False)
+    content = _today_path(config, vault).read_text(encoding="utf-8")
+    assert "\r" not in content
+    assert n == 1
+
+
+def test_undo_removes_whole_multiline_message(setup, monkeypatch):
+    """undo 删掉整条多行消息 (而非只删最后一行)。"""
+    config, _, diary_writer, vault = setup
+    hhmm_iter = iter(["14:30", "14:35"])
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: next(hhmm_iter))
+    with patch.object(diary_writer, "_call_llm", side_effect=["第一条", "二条上\n\n二条下"]):
+        diary_writer.write("u-abc", "a", is_voice=False)
+        diary_writer.write("u-abc", "b", is_voice=False)
+    assert diary_writer.undo_last_block("u-abc") is True
+    content = _today_path(config, vault).read_text(encoding="utf-8")
+    assert "二条上" not in content and "二条下" not in content
+    assert "第一条" in content
+
+
+def test_excluded_prefix_message_stays_visible(setup, monkeypatch):
+    """审查回归: 首行是 ---/# /_( 的消息不能"隐形" (要计数、undo 不误删)。"""
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "AI_API_KEY", "")
+    hhmm_iter = iter(["09:00", "09:05", "09:10"])
+    monkeypatch.setattr(diary_writer.config, "hhmm_str", lambda: next(hhmm_iter))
+    _, n1 = diary_writer.write("u-abc", "正常的第一条", is_voice=False)
+    _, n2 = diary_writer.write("u-abc", "---\n\n今天很重要的记录", is_voice=False)
+    assert n1 == 1 and n2 == 2, f"排除前缀消息未计数: n2={n2}"
+    path = _today_path(config, vault)
+    assert diary_writer.count_messages(path) == 2
+    # undo 只删最后一条, 不误删更早内容
+    assert diary_writer.undo_last_block("u-abc") is True
+    content = path.read_text(encoding="utf-8")
+    assert "正常的第一条" in content, "undo 误删了更早的消息!"
+    assert "今天很重要的记录" not in content
+
+
+def test_heading_prefix_escaped_not_hidden(setup, monkeypatch):
+    config, _, diary_writer, vault = setup
+    monkeypatch.setattr(diary_writer.config, "AI_API_KEY", "")
+    _, n = diary_writer.write("u-abc", "# 今日待办\n\n收拾行李", is_voice=False)
+    assert n == 1, f"# 开头的消息被隐形: n={n}"

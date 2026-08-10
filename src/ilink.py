@@ -554,6 +554,36 @@ def send_to_user(state: dict, user_id: str, text: str, use_token: bool = True) -
     return ok
 
 
+def _coalesce_items(item_list: list) -> tuple[str, bool, bool]:
+    """把一条 msg 里的多个 text/voice item 合成一次投递。
+
+    iLink 会把长内容 (实测约 200 字以上) 拆成同一条 msg 里的多个 item ——
+    对用户来说是"一次发送", 拆开处理会被记成多段、回复多条。
+    直接拼接 (不加分隔符): 拆分点在原文中间, 拼回去才是原话。
+
+    返回 (text, is_voice, has_empty_voice):
+    is_voice = 任一 item 是语音; has_empty_voice = 出现过转写为空的语音 item
+    (全部为空时上层用它回复"没听清")。
+    """
+    pieces: list = []
+    is_voice = False
+    has_empty_voice = False
+    for item in item_list:
+        item_type = item.get("type", 0)
+        if item_type == 1:
+            piece = item.get("text_item", {}).get("text", "")
+            if piece:
+                pieces.append(piece)
+        elif item_type == 3:
+            piece = item.get("voice_item", {}).get("text", "")
+            is_voice = True
+            if piece:
+                pieces.append(piece)
+            else:
+                has_empty_voice = True
+    return "".join(pieces), is_voice, has_empty_voice
+
+
 def run_loop(state: dict, on_message, should_stop=None) -> str:
     """长轮询收消息主循环。
 
@@ -650,39 +680,35 @@ def run_loop(state: dict, on_message, should_stop=None) -> str:
                 }
                 save_state(state)
 
-                for item in msg.get("item_list", []):
-                    item_type = item.get("type", 0)
-                    text = None
-                    is_voice = False
+                # 同一条 msg 的多个 text/voice item 合并成一次投递:
+                # 平台会把长内容 (实测约 200 字) 拆成多个 item, 对用户是"一次发送",
+                # 合并后日记里只算一段, 也只回一条回复。
+                text, is_voice, has_empty_voice = _coalesce_items(msg.get("item_list", []))
+                if not text:
+                    if has_empty_voice:
+                        send_message(state, user_id, context_token, "语音没听清呢，试试发文字？")
+                    continue
 
-                    if item_type == 1:
-                        text = item.get("text_item", {}).get("text", "")
-                    elif item_type == 3:
-                        text = item.get("voice_item", {}).get("text", "")
-                        is_voice = True
-                        if not text:
-                            send_message(state, user_id, context_token, "语音没听清呢，试试发文字？")
-                            continue
+                print(f"\n  收到{'(语音)' if is_voice else ''}: {text[:50]}")
+                _log(f"inbound text from={user_id[:20]} voice={is_voice} text={text[:120]!r}")
 
-                    if not text:
-                        continue
+                try:
+                    reply = on_message(user_id, text, is_voice)
+                except Exception as e:
+                    print(f"  处理异常: {e}")
+                    traceback.print_exc()
+                    _log(f"handler exception: {e}")
+                    reply = "出了点问题，再试一次？"
 
-                    print(f"\n  收到{'(语音)' if is_voice else ''}: {text[:50]}")
-                    _log(f"inbound text from={user_id[:20]} voice={is_voice} text={text[:120]!r}")
+                if reply and has_empty_voice:
+                    # 部分语音片段转写为空: 内容可能没存全, 必须让用户知道
+                    reply = f"{reply}\n\n(有一段语音没听清, 这条可能没记全, 建议检查一下)"
 
-                    try:
-                        reply = on_message(user_id, text, is_voice)
-                    except Exception as e:
-                        print(f"  处理异常: {e}")
-                        traceback.print_exc()
-                        _log(f"handler exception: {e}")
-                        reply = "出了点问题，再试一次？"
-
-                    if reply:
-                        ok = send_message(state, user_id, context_token, reply)
-                        status = "OK" if ok else "FAIL"
-                        print(f"  回复: {reply[:60]}{'...' if len(reply) > 60 else ''} {status}")
-                        _log(f"reply {'ok' if ok else 'failed'} to={user_id[:20]} text={reply[:120]!r}")
+                if reply:
+                    ok = send_message(state, user_id, context_token, reply)
+                    status = "OK" if ok else "FAIL"
+                    print(f"  回复: {reply[:60]}{'...' if len(reply) > 60 else ''} {status}")
+                    _log(f"reply {'ok' if ok else 'failed'} to={user_id[:20]} text={reply[:120]!r}")
     except KeyboardInterrupt:
         print("\n\n  bye")
         return "keyboard_interrupt"

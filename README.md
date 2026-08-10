@@ -23,9 +23,21 @@
                                  你的 Agent 直接读写这个库 → 回顾/检索随你做
 ```
 
-## 5 分钟部署
+## 1 分钟上手 (推荐: 免安装)
 
-**图形化方式 (推荐)**: 装好依赖后运行 `python src/webui.py`, 浏览器会自动打开
+从 [Releases](../../releases/latest) 下载对应平台的单文件版, 免解压免安装:
+
+- Windows: `wechat-diary-windows.exe` (首次运行 SmartScreen 会警告 —— exe 未做
+  代码签名, 点「更多信息 → 仍要运行」)
+- macOS: `wechat-diary-macos` (首次运行需在「系统设置 → 隐私与安全性」允许)
+
+双击后浏览器自动打开本地向导 (只监听 127.0.0.1): **扫码绑定微信 → 点选日记
+文件夹 → 启动**, 三步完成。不需要装 Python、不需要编辑配置文件、不需要任何
+AI key。之后在微信里给 bot 发「开始记日记」就能用了。
+
+## 5 分钟源码部署
+
+**图形化方式**: 装好依赖后运行 `python src/webui.py`, 浏览器会自动打开
 本地页面 (只监听 127.0.0.1) —— 扫码绑定微信 → 点选日记文件夹 → 启动, 三步完成,
 不用手工编辑 .env。命令行方式如下, 两者等价:
 
@@ -72,6 +84,7 @@ python ilink.py login
 | 撤回 | 删掉刚才记的最后一段 |
 | 结束 | 收尾归档今天 + 退出记录模式 |
 | 帮助 | 查看命令 |
+| 叫我XX | 设置/修改你的称呼 (闲聊模式下) |
 
 不在记录模式时是闲聊模式 (配了 key 走 LLM, 没配是固定文案), 说的话**不会**被记录 ——
 避免随口一句话被误记进日记。跨天自动回到闲聊模式。
@@ -150,6 +163,7 @@ wechat-diary/
 │   ├── logger.py          # RotatingFileHandler 封装
 │   ├── users.py           # 单用户实现
 │   ├── intents.py         # 短消息意图识别
+│   ├── names.py           # 取名回答的名字提取 (规则引擎)
 │   ├── session_state.py   # chat/diary 双模式状态机 + 跨天 reset
 │   ├── chat_handler.py    # chat 模式 LLM 闲聊 (零 key 时固定文案)
 │   ├── diary_writer.py    # (可选)润色 + 写 md

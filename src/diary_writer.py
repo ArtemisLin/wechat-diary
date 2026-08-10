@@ -26,7 +26,7 @@ import welcome
 _AI_LOG = app_logger.get_logger("ai", paths.AI_LOG)
 
 POLISH_PROMPT = """你是日记助理。用户刚说了一段话(可能是语音转写,有口语痕迹)。
-请轻度润色:去掉"嗯""那个""这个"这类语气词,理顺断句,适当分段。
+请轻度润色:去掉"嗯""那个""这个"这类语气词,理顺断句;需要分行时用单个换行,不要留空行。
 禁止:改变第一人称、改写语义、加入用户没说的内容、做总结或点评。
 保留用户的表达风格和情绪。
 
@@ -255,6 +255,9 @@ def count_messages(path: Path) -> int:
 
 CLOSING_MARKER = "_(今日封存于"
 
+# 块内空行 (含仅含空白的"空"行) → 单个换行
+_NORMALIZE_BLANK_RE = re.compile(r"\n\s*\n+")
+
 
 def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
     """写入日记。返回 (回复文本, 当前消息数)。永不抛。
@@ -266,8 +269,15 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
         return "嗯? 没听清, 再说一次?", 0
 
     polished, used_llm, error_kind = polish(text)
+    # 契约规则 6: 一个空行分隔块 = 一条消息。块内空行收敛为单个换行,
+    # 保证"一次发送"永远只算一段 (count_messages / undo / MCP 同一口径)。
+    polished = _NORMALIZE_BLANK_RE.sub("\n", polished.replace("\r\n", "\n").replace("\r", "\n")).strip()
     if is_voice:
         polished = f"🎤 {polished}"
+    elif polished.startswith(("# ", "---", "_(")):
+        # 首行撞上契约的排除前缀会让整块"隐形" (不计数、搜不到、undo 会误删
+        # 更早的内容) —— markdown 反斜杠转义, 渲染不变, 块仍是消息块
+        polished = "\\" + polished
     timestamp = config.hhmm_str()
 
     try:

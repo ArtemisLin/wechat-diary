@@ -99,6 +99,16 @@ def set_name(user_id: str, name: str) -> None:
     save(p)
 
 
+def skip_naming(user_id: str) -> None:
+    """跳过取名 (用户拒绝 / 直接发命令): 不设名字, 状态切到 active。
+
+    之后仍可在 chat 模式发「叫我XX」补上名字。
+    """
+    p = load(user_id)
+    p.state = "active"
+    save(p)
+
+
 def get_name(user_id: str, fallback: str = "你") -> str:
     """取名字 (供模板用); 未取名返回默认 '你'。"""
     p = load(user_id)

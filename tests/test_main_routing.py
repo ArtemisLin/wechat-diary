@@ -330,15 +330,116 @@ def test_second_message_sets_name(fresh_user_setup):
 
 
 def test_name_too_long_rejected(fresh_user_setup):
-    """名字 >10 字 → 回提示重发, 状态保留 awaiting_name。"""
-    main, _, user_profile, _ = fresh_user_setup
+    """名字 >10 字且 LLM 兜底失败 → 回提示重发, 状态保留 awaiting_name。"""
+    main, diary_writer, user_profile, _ = fresh_user_setup
     main._on_message("u-abc", "你好", is_voice=False)
-    long_name = "我希望你叫我谷雨可是这个名字有点长"
-    reply = main._on_message("u-abc", long_name, is_voice=False)
+    long_name = "我希望你叫我谷雨谷雨谷雨可是这个名字有点长"
+    with patch.object(diary_writer, "_call_llm", side_effect=diary_writer.LLMError("network")):
+        reply = main._on_message("u-abc", long_name, is_voice=False)
     assert "短一点" in reply or "再发" in reply
     p = user_profile.load("u-abc")
     assert p.state == "awaiting_name", "名字太长仍待取名"
     assert p.name is None
+
+
+def test_name_extracted_from_call_me_sentence(fresh_user_setup):
+    """「叫我谷雨就行」→ 提取出「谷雨」, 不是整句当名字 (零 key 规则引擎)。"""
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    reply = main._on_message("u-abc", "叫我谷雨就行", is_voice=False)
+    p = user_profile.load("u-abc")
+    assert p.name == "谷雨", f"应提取「谷雨」, 实际: {p.name!r}"
+    assert p.state == "active"
+    assert "谷雨" in reply
+
+
+def test_help_during_awaiting_name_not_taken_as_name(fresh_user_setup):
+    """取名流程中发「帮助」→ 回帮助 + 提醒欠名字, 不把「帮助」当名字。"""
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    reply = main._on_message("u-abc", "帮助", is_voice=False)
+    assert "使用指南" in reply or "命令" in reply
+    assert "称呼" in reply, "应提醒还没告诉名字"
+    p = user_profile.load("u-abc")
+    assert p.state == "awaiting_name"
+    assert p.name is None
+
+
+def test_greeting_during_awaiting_name_not_taken_as_name(fresh_user_setup):
+    """取名流程中发招呼词 (在吗) → 不当名字, 状态保留。"""
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    main._on_message("u-abc", "在吗", is_voice=False)
+    p = user_profile.load("u-abc")
+    assert p.state == "awaiting_name"
+    assert p.name is None
+
+
+def test_start_diary_during_awaiting_name_passes_through(fresh_user_setup):
+    """取名流程中发「开始记日记」→ 取名不拦路: 放行进 diary 模式, 名字置空。"""
+    import session_state
+    main, diary_writer, user_profile, vault = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    reply = main._on_message("u-abc", "开始记日记", is_voice=False)
+    assert "叫我XX" in reply, "应附带以后补名字的提示"
+    p = user_profile.load("u-abc")
+    assert p.state == "active"
+    assert p.name is None
+    s = session_state.load_or_reset("u-abc")
+    assert s.mode == "diary"
+    with patch.object(diary_writer, "_call_llm", return_value="今天很好"):
+        main._on_message("u-abc", "今天很好", is_voice=False)
+    assert len(list(vault.rglob("*.md"))) == 1, "后续消息应正常记日记"
+
+
+def test_refuse_naming_skips(fresh_user_setup):
+    """取名流程中发「跳过」→ 不设名字, 状态 active。"""
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    reply = main._on_message("u-abc", "跳过", is_voice=False)
+    assert "开始记日记" in reply
+    p = user_profile.load("u-abc")
+    assert p.state == "active"
+    assert p.name is None
+
+
+def test_llm_fallback_extracts_name(fresh_user_setup):
+    """规则失手的长句 + 配了 key → LLM 兜底提取。"""
+    main, diary_writer, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    weird = "唔这个问题让我想想你就用我小时候外婆对我的那个称呼吧就是小雨点儿"
+    with patch.object(diary_writer, "_call_llm", return_value="小雨点儿"):
+        reply = main._on_message("u-abc", weird, is_voice=False)
+    p = user_profile.load("u-abc")
+    assert p.name == "小雨点儿"
+    assert "小雨点儿" in reply
+
+
+def test_rename_in_chat_mode(setup):
+    """chat 模式下「叫我XX」→ 改名并确认, 不进 LLM 闲聊。"""
+    main, _, user_profile, _ = setup
+    reply = main._handle("u-abc", "叫我谷雨", is_voice=False)
+    assert "谷雨" in reply
+    assert user_profile.load("u-abc").name == "谷雨"
+
+
+def test_rename_not_triggered_in_diary_mode(diary_setup):
+    """diary 模式下「叫我谷雨」是日记内容, 照记不误, 名字不变。"""
+    main, diary_writer, user_profile, vault = diary_setup
+    with patch.object(diary_writer, "_call_llm", return_value="叫我谷雨"):
+        main._handle("u-abc", "叫我谷雨", is_voice=False)
+    assert user_profile.load("u-abc").name == "TestUser"
+    files = list(vault.rglob("*.md"))
+    assert files and "叫我谷雨" in files[0].read_text(encoding="utf-8")
+
+
+def test_casual_jiao_wo_sentence_not_rename(setup):
+    """闲聊里「同事叫我帮忙了」→ 不触发改名 (前缀白名单挡住)。"""
+    import chat_handler
+    main, _, user_profile, _ = setup
+    with patch.object(chat_handler, "_call_chat_llm", return_value="嗯嗯"):
+        main._handle("u-abc", "同事叫我帮忙了", is_voice=False)
+    assert user_profile.load("u-abc").name == "TestUser"
 
 
 # === v2 C.1: 离线间隔提示 ===
@@ -365,3 +466,70 @@ def test_offline_notice_appended_once_to_first_reply(setup):
     assert "测试离线提示" in r1
     r2 = main._on_message("u-abc", "帮助", is_voice=False)
     assert "测试离线提示" not in r2
+
+
+# === 对抗审查回归 (2026-08-10) ===
+
+def test_migrated_user_in_diary_mode_content_not_swallowed(fresh_user_setup):
+    """老用户迁移后 (state=unknown) 当天仍在 diary 模式: 消息必须照记, 不发欢迎。"""
+    import session_state
+    main, diary_writer, user_profile, vault = fresh_user_setup
+    session_state.enter_diary("u-abc")
+    with patch.object(diary_writer, "_call_llm", return_value="刚才和老王聊了很久"):
+        reply = main._on_message("u-abc", "刚才和老王聊了很久", is_voice=False)
+    assert "记下来啦" in reply, f"日记内容被吞: {reply!r}"
+    files = list(vault.rglob("*.md"))
+    assert files and "老王" in files[0].read_text(encoding="utf-8")
+    assert user_profile.load("u-abc").state == "unknown", "不应误改 profile 状态"
+
+
+def test_undo_during_awaiting_name_keeps_naming_flow(fresh_user_setup):
+    """取名流程中误发「撤回」: 答复 + 继续等名字, 不静默弃名。"""
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    reply = main._on_message("u-abc", "撤回", is_voice=False)
+    assert "称呼" in reply, "应提醒还在等名字"
+    assert user_profile.load("u-abc").state == "awaiting_name"
+    main._on_message("u-abc", "谷雨", is_voice=False)
+    assert user_profile.load("u-abc").name == "谷雨", "取名流程应还活着"
+
+
+def test_inline_name_with_start_diary_awaiting(fresh_user_setup):
+    """「叫我小明, 开始记日记」(取名流程中): 名字收下 + 进入记录模式。"""
+    import session_state
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    reply = main._on_message("u-abc", "叫我小明, 开始记日记", is_voice=False)
+    p = user_profile.load("u-abc")
+    assert p.name == "小明", f"同句名字被丢弃: {p.name!r}"
+    assert session_state.load_or_reset("u-abc").mode == "diary"
+    assert "小明" in reply
+
+
+def test_inline_name_with_start_diary_chat_mode(setup):
+    """chat 模式「叫我小明, 开始记日记」: 改名 + 进入记录模式。"""
+    main, _, user_profile, _ = setup
+    reply = main._handle("u-abc", "叫我小明, 开始记日记", is_voice=False)
+    assert user_profile.load("u-abc").name == "小明"
+    assert "小明" in reply
+
+
+def test_casual_rename_does_not_fire(setup):
+    """审查 critical 回归: 「你叫我干嘛」「叫我起床」不得改名。"""
+    import chat_handler
+    main, _, user_profile, _ = setup
+    for msg in ("你叫我干嘛", "叫我起床"):
+        with patch.object(chat_handler, "_call_chat_llm", return_value="嗯嗯"):
+            main._handle("u-abc", msg, is_voice=False)
+        assert user_profile.load("u-abc").name == "TestUser", f"{msg!r} 误改名"
+
+
+def test_refusal_with_politeness_skips_naming(fresh_user_setup):
+    """「不用了谢谢」→ 识别为拒绝, skip 而不是被当名字/卡循环。"""
+    main, _, user_profile, _ = fresh_user_setup
+    main._on_message("u-abc", "你好", is_voice=False)
+    reply = main._on_message("u-abc", "不用了谢谢", is_voice=False)
+    p = user_profile.load("u-abc")
+    assert p.name is None, f"拒绝被当成名字: {p.name!r}"
+    assert p.state == "active"
+    assert "开始记日记" in reply
