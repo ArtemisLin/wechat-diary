@@ -1,6 +1,6 @@
 # HANDOFF — 交接文档
 
-> 写给下一个接手本项目的 AI Agent。最后更新: 2026-08-10 晚。
+> 写给下一个接手本项目的 AI Agent。最后更新: 2026-08-10 深夜 (初赛提交完成后)。
 > 读完本文件, 你应该知道: 已经做了什么、正在等什么、哪些坑别再踩、
 > 哪些事没做完需要主动提醒用户。
 
@@ -21,7 +21,7 @@ wechat-diary = 微信说话 → 用户自己电脑上的 markdown 日记。管�
 
 ## 1. 本轮 (2026-08-09 ~ 08-10) 做了什么
 
-按时间序, 全部在 **feat/hackathon-mcp 分支** (未合 main):
+按时间序 (当时在 feat/hackathon-mcp 分支, **现已全部合入 main**):
 
 1. **只读 MCP server** `src/mcp_server.py`: 零依赖 stdio JSON-RPC, 三个工具
    (diary_read/search/recent), 物理上无写入路径。配套 `docs/demo-vault/`
@@ -36,27 +36,38 @@ wechat-diary = 微信说话 → 用户自己电脑上的 markdown 日记。管�
 4. 测试从 150 → **187 个**, 全绿。每轮大改动后跑过多 agent 对抗审查,
    共确认并修复 10+ 个真 bug (复现脚本验证过)。
 
-## 2. 当前状态 (交接时刻)
+## 2. 当前状态 (交接时刻, 2026-08-10 深夜)
 
-- **等待用户的 Windows 真机验证结果** (todo 挂起中):
-  ① 全链路: 微信发「开始记日记」→ 说话 → 选定文件夹里出现当日 .md;
-  ② 「浏览」按钮弹窗置顶修复是否生效 (修复包 = Actions run 31373519143 的
-  wechat-diary-windows artifact)。
-- 用户 Mac 上可能还有一个开发版 webui 进程挂在 8765 端口 (测试用, 可杀)。
-- 用户的正式部署机是 Windows; **iLink session 是单点的, 在任何新机器扫码
-  都会顶掉旧机器的登录** —— 在 Mac 上测试扫码前必须提醒用户这一点。
-- **黑客松初赛提交状态未确认**: 截止是 2026-08-10 22:00, 用户当时说
-  "先不管提交问题, 做网页版"。**接手后第一时间问用户是否赶上了提交**;
-  若晋级复赛 (8/12 通知), 需要: 2 分钟演示视频 + ≤6 页 PPT + 至少一位
-  同画像真实用户的体验反馈 (复赛 8/16 北京/上海线下路演, 8/17 新加坡)。
+- **初赛已提交** (8/10 22:00 截止前): 源码包 = 桌面 wechat-diary-v2.0.0-src.zip;
+  "自建 MCP (选填, 验证通过 +5)" 填的是下面的隧道 URL。每组一份, 已锁定。
+- **⚠️ 用户这台 Mac 在评测结束前 (至少到 8/12 出结果) 不能关机/重启/合盖**:
+  上面跑着 ① src/mcp_http.py (127.0.0.1:8977, 服务 demo-vault) ② cloudflared
+  快速隧道 (http2 协议, URL: rough-existing-cathedral-letter.trycloudflare.com)
+  ③ caffeinate 防休眠。隧道 URL 绑进程, 重启即永久失效 (表单改不了);
+  短暂睡眠可自动重连、URL 不变。
+- **v2.0.0 + v2.0.1 已发布** (Release 挂双平台单文件产物), main 已合并,
+  build.yml 的临时分支触发已删。v2.0.1 = macOS 冻结版 CA 证书修复,
+  v2.0.0 的资产也已原地替换成修复版。
+- 用户的日记管道当前登录在这台 Mac 上 (webui, 端口 8901); 正式部署机
+  Windows 被顶掉了 (iLink session 单点)。用户想切回去时在 Windows 重扫码即可。
+- **朋友 (Mac 用户) 是第一个真实外部用户**: 首跑踩中证书 bug 已修复,
+  需确认他用新包 (桌面 wechat-diary-win-mac.zip 或 Release latest) 跑通全链路;
+  若晋级复赛, 他就是"同画像真实用户反馈"的人选 (复赛 8/16 北京/上海路演,
+  8/17 新加坡; 需 2 分钟视频 + ≤6 页 PPT)。
 
-## 3. 用户预告的下一步: "大修"
+## 3. 大修 (2026-08-10 晚, 已完成)
 
-用户原话: 接下来要大修, 包括 "Agent 内部的内容调整" 等多方面调整。
-**具体范围未知, 开工前先问清楚**。大概率涉及: 文案 (welcome.py 集中了全部
-微信端文案)、闲聊 prompt (chat_handler.py 的 CHAT_SYSTEM_PROMPT)、润色
-prompt (diary_writer.py 的 POLISH_PROMPT)、提醒文案 (scheduler.py)。
-注意: **tests/ 里大量断言绑定了具体文案字符串**, 改文案必须同步改测试。
+用户点的两个问题, 均已修复并提交:
+1. **取名智能化**: 新增 src/names.py 规则引擎 (「叫我X」/「我叫X」/裸名/
+   拒绝识别/复读折叠/疑问句排除, 配 key 走 LLM 兜底); awaiting_name 命令词
+   拦截;「跳过」; chat 模式「叫我XX」改名 (白名单前缀+功能字过滤防误改)。
+2. **一次发送=一段**: iLink 把 >200 字拆成同 msg 多 item → run_loop 用
+   _coalesce_items 无损拼回一次投递; diary_writer 块内空行归一 + 排除前缀
+   反斜杠转义, 契约"一个空行块=一条消息"闭环 (count/undo/MCP 同口径)。
+
+流程: 4 视角多 agent 对抗审查 + 每发现 2 独立复核 → 确认 15 个真缺陷全部
+修复 (2 critical: 闲聊「你叫我干嘛」误改名、「不用了谢谢」被当名字)。
+测试 187 → 294, 全绿。
 
 ## 4. 踩过的坑 (别再踩)
 
@@ -86,10 +97,22 @@ prompt (diary_writer.py 的 POLISH_PROMPT)、提醒文案 (scheduler.py)。
   stop_event 换代保存; 重扫码热切换必须 join 旧线程后再落盘新 state
   (relogin_async), 否则旧线程整体覆盖新 token。
 
+**打包态新增 (2026-08-10 深夜, 真实用户踩出) :**
+- **macOS 冻结版必须带 CA 证书**: 构建机 Python 的证书路径在用户机器上不存在,
+  缺 certifi 则所有 HTTPS 直接 CERTIFICATE_VERIFY_FAILED (二维码/AI 全挂);
+  Windows 走系统证书库幸免。已修: spec 打入 certifi (故意不 try, 缺了就炸),
+  config.py 冻结分支设 SSL_CERT_FILE。
+- CI release job 的 mv 不能把产物改名成与 artifact 目录同名的路径 (撞名报
+  "are the same file"), 已改移入 out/。
+- **cloudflared 默认 QUIC 会被 Clash TUN 打死** (fake-IP 198.18.x 段),
+  必须 --protocol http2; trycloudflare 快速隧道的 URL 绑进程生命周期。
+- open.hirebox.cn (提交平台) 经 Clash 会 TLS 中断, 访问需直连。
+
 **环境:**
 - 部署机 Python 3.9 (语法必须 3.9 兼容; CI 是 3.11/3.13), Windows 终端 GBK
   (所有 stdio 都要显式 UTF-8 包装)。
-- Mac (开发机) 的 pytest/apscheduler/pyinstaller 装在 user site。
+- Mac (开发机) 的 pytest/apscheduler/pyinstaller 装在 user site,
+  本机 python3 即 3.9.6 (与部署机同版本, 跑通测试即验证了 3.9 兼容)。
 
 ## 5. 已知未修的小问题 (记录在案, 优先级低)
 
@@ -104,16 +127,18 @@ prompt (diary_writer.py 的 POLISH_PROMPT)、提醒文案 (scheduler.py)。
 
 ## 6. 没做的事 (需要主动提醒用户)
 
-- [ ] **确认黑客松初赛是否提交** (见第 2 节, 接手第一件事)。
-- [ ] 等 Windows 验证双通过后: 打 v2.0.0 tag 发首个 Release (build.yml 会
-  自动挂产物), README 安装章节改成"下载 exe 即用"优先。
-- [ ] 合并 feat/hackathon-mcp → main (体验链接指向仓库时评委看到的是 main);
-  合并后可删掉 build.yml 里的临时 branch 触发。
+- [ ] **8/12 关注晋级通知**; 若晋级: 2 分钟演示视频 + ≤6 页 PPT + 朋友的
+  真实用户反馈 (他踩中并见证修复的证书 bug 本身就是好素材)。
+- [ ] **确认朋友用修复版跑通全链路** (桌面 wechat-diary-win-mac.zip 已是
+  v2.0.1 内容; 旧的 submission.zip 是凌晨的过时草稿, 建议删除)。
+- [ ] 评测结束后收尾: 停掉 Mac 上的 mcp_http/cloudflared/caffeinate;
+  用户日记管道要不要迁回 Windows 部署机 (重扫码即可)。
 - [ ] 官网落地页 (Cloudflare Pages, 介绍+下载按钮) —— 用户认可的方向, 未做。
 - [ ] 隐私遗留问题 (对抗推演指出、用户未表态): 用户日记含第三方敏感信息
   (客户咨询等), 送云端 LLM 润色存在张力; 本地模型选项 (如 Ollama) 值得
   在某个版本提供; 一切对外展示/demo 必须剔除可识别第三方信息。
-- [ ] 复赛材料 (若晋级): 视频/PPT/真实用户反馈。
+- [ ] 小遗留: 取名裸兜底对"就就"类叠引导字名字会剥坏 (审查 minor, 记录在案);
+  陌生人发纯空语音会收到"没听清"回复 (绕过单用户拒绝, 预先存在)。
 
 ## 7. 与用户协作的方式
 
