@@ -246,11 +246,20 @@ def api_status() -> dict:
 
     today = {"date": config.today_str(), "count": 0, "sealed": False}
     recent: list = []
+    dir_error = ""
     if dir_ok:
         root = Path(diary_dir)
-        today = _day_summary(root, config.today_str())
-        for date in reversed(mcp_server.list_dates(root)[-7:]):
-            recent.append(_day_summary(root, date))
+        try:
+            today = _day_summary(root, config.today_str())
+            for date in reversed(mcp_server.list_dates(root)[-7:]):
+                recent.append(_day_summary(root, date))
+        except OSError as e:
+            # 目录能 stat 但列不出来: macOS TCC 下 launchd 起的进程读不了
+            # ~/Documents (readdir 直接 EPERM), 真机实测。绝不能让整个
+            # /api/status 抛出去 —— 前端只会看到"连不上服务", 把一个能修的
+            # 权限问题伪装成程序挂了 (而 bot 其实还在收消息、还在写不进去)。
+            dir_ok = False
+            dir_error = f"日记目录读不了: {e.strerror or e} ({diary_dir})"
 
     return {
         "logged_in": logged_in,
@@ -261,6 +270,7 @@ def api_status() -> dict:
         "user_id_masked": _mask_user_id(user_id),
         "diary_dir": diary_dir,
         "diary_dir_ok": dir_ok,
+        "diary_dir_error": dir_error,
         "ai_key_set": bool(config.AI_API_KEY),
         "remind_hours": [config.REMIND_HOUR_1, config.REMIND_HOUR_2],
         "today": today,

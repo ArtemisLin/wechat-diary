@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import config  # noqa: E402
 import ilink  # noqa: E402
+import mcp_server  # noqa: E402
 import webui  # noqa: E402
 
 
@@ -181,6 +182,27 @@ def test_status_with_diary_and_login(client, monkeypatch):
     # 完整 user_id 不泄露, 只给打码版
     assert body["user_id_masked"] != full_id
     assert full_id not in json.dumps(body)
+    assert body["diary_dir_error"] == ""
+
+
+def test_status_survives_unreadable_diary_dir(client, monkeypatch):
+    """目录 stat 得到但列不出来 (macOS TCC 下 launchd 进程读 ~/Documents 就是
+    这样) 不能把 /api/status 整个打挂 —— 否则前端只会显示"连不上本地服务",
+    把一个能修的权限问题伪装成程序崩了。"""
+    vault = client.tmp / "vault"
+    vault.mkdir(exist_ok=True)
+    monkeypatch.setattr(config, "DIARY_DIR", str(vault))
+
+    def boom(_):
+        raise PermissionError(1, "Operation not permitted")
+
+    monkeypatch.setattr(mcp_server, "list_dates", boom)
+
+    status, body = request(client.port, "GET", "/api/status", token=client.token)
+    assert status == 200
+    assert body["diary_dir_ok"] is False
+    assert "Operation not permitted" in body["diary_dir_error"]
+    assert body["recent"] == []
 
 
 # === 登录流 ===
