@@ -108,6 +108,22 @@ wechat-diary = 微信说话 → 用户自己电脑上的 markdown 日记。管�
   必须 --protocol http2; trycloudflare 快速隧道的 URL 绑进程生命周期。
 - open.hirebox.cn (提交平台) 经 Clash 会 TLS 中断, 访问需直连。
 
+**macOS 常驻 (2026-08-11, scripts/install-launchd-mac.sh):**
+- 起因: 8/10 23:55 进程被关掉, 一整晚消息没人接, 第二天页面还写着"运行中"。
+  launchd 的价值不是开机自启 (这台机器 63 天没重启), 是 KeepAlive —— 进程
+  被 kill 掉 8 秒内自动拉回 (实测)。
+- **launchd 进程不继承任何 TCC 授权**: 日记目录在 ~/Documents (受保护),
+  终端里跑得好好的, 换 launchd 就 readdir EPERM。注意 stat 能过、readdir 挂,
+  所以 _diary_dir_ok 判 True 之后才炸。解法是给 Python 开完全磁盘访问。
+- **授权必须给真身**: /usr/bin/python3 是 xcode-select 跳板, 会 exec 掉
+  /Library/Developer/CommandLineTools/.../3.9/bin/python3.9, TCC 认后者。
+  plist 里也要写真身路径 (安装脚本用 realpath 解析), 否则授权对不上号。
+- 相应加固: api_status 对 OSError 降级返回 diary_dir_error, 不再让整个
+  /api/status 500 —— 否则前端只显示"连不上本地服务", 把权限问题伪装成
+  程序挂了 (而 bot 还在收消息、还在写不进去, 消息会被吃掉)。
+- 前端同源问题: 轮询失败时只挂横幅、面板继续显示断线前快照 → "无法连接"
+  和"运行中"同框、停止按钮可点。已改为 markOffline() 统一置为状态未知。
+
 **环境:**
 - 部署机 Python 3.9 (语法必须 3.9 兼容; CI 是 3.11/3.13), Windows 终端 GBK
   (所有 stdio 都要显式 UTF-8 包装)。
