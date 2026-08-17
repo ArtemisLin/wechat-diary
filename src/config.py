@@ -8,7 +8,7 @@ from __future__ import annotations
 import io
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -58,7 +58,11 @@ def now_bj() -> datetime:
 
 
 def today_str() -> str:
-    """今天的日期字符串 YYYY-MM-DD(北京时区)。"""
+    """今天的【日历】日期字符串 YYYY-MM-DD(北京时区)。
+
+    ⚠️ 日记文件名/封存/计数一律用 logical_today_str(), 不要用这个——
+    契约 v1.2 起"今天"指逻辑日(凌晨 DAY_START_HOUR 点前算前一天)。
+    """
     return now_bj().strftime("%Y-%m-%d")
 
 
@@ -67,12 +71,43 @@ def hhmm_str() -> str:
     return now_bj().strftime("%H:%M")
 
 
+# === 逻辑日 (契约 v1.2, 2026-08-16) ===
+# 一天的边界不是零点, 而是凌晨 DAY_START_HOUR 点(默认 4): 夜猫子睡前记的属于"今晚"。
+# 段头时间戳仍写真实时间(00:30 出现在昨天的文件里, 日记本来如此)。
+def _parse_day_start_hour(raw: str) -> int:
+    try:
+        h = int(raw)
+    except (TypeError, ValueError):
+        return 4
+    return h if 0 <= h <= 12 else 4
+
+
+DAY_START_HOUR = _parse_day_start_hour(os.environ.get("DAY_START_HOUR", "4"))
+
+
+def logical_today_str(now: datetime | None = None) -> str:
+    """逻辑日 YYYY-MM-DD: 凌晨 DAY_START_HOUR 点前算前一天。"""
+    t = now if now is not None else now_bj()
+    return (t - timedelta(hours=DAY_START_HOUR)).strftime("%Y-%m-%d")
+
+
+def is_night_now(now: datetime | None = None) -> bool:
+    """现在是不是"深夜段"(20 点后到逻辑日边界前): 收尾语选晚安池用。"""
+    t = now if now is not None else now_bj()
+    return t.hour >= 20 or t.hour < DAY_START_HOUR
+
+
 _WEEKDAY_CN = "一二三四五六日"
 
 
 def weekday_str() -> str:
-    """今天是周几(中文), 北京时区。"""
+    """今天(日历日)是周几(中文), 北京时区。日记 frontmatter 请用 weekday_for()。"""
     return f"周{_WEEKDAY_CN[now_bj().weekday()]}"
+
+
+def weekday_for(date_str: str) -> str:
+    """指定 YYYY-MM-DD 是周几(中文), 与时区无关。"""
+    return f"周{_WEEKDAY_CN[datetime.strptime(date_str, '%Y-%m-%d').weekday()]}"
 
 
 # === AI ===

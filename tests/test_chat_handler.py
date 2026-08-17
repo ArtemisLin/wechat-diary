@@ -105,7 +105,7 @@ def test_chat_no_key_returns_guidance(setup, monkeypatch):
                       side_effect=lambda *a, **k: called.append(1)):
         reply = ch.chat("u-abc", "随便聊聊")
     assert not called, "零 key 模式不应调用 LLM"
-    assert "开始记日记" in reply
+    assert "直接发" in reply
 
 
 def test_prompt_forbids_fake_mode_switching(setup):

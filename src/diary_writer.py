@@ -1,10 +1,13 @@
-"""日记写入核心:LLM 轻度润色 + 追加到当日 md 文件。
+"""日记写入核心: 原文直存, 追加到当日(逻辑日) md 文件。
 
 契约:
-- write(user_id, text, is_voice) 永不抛异常,LLM 失败时回落写原文
+- write(user_id, text, is_voice) 永不抛异常
 - 只 append,不改写历史段落
-- 文件名用北京时间日期,跨时区安全
-- undo_last_block / finalize_today 为 UX 辅助操作
+- 文件名用逻辑日(契约 v1.2: 凌晨 DAY_START_HOUR 点前算前一天), 跨时区安全
+- undo_last_block / finalize_today / count_day 为 UX 辅助操作
+
+v0.3 起不再调 AI 润色(备忘录定位下润色是风险: 病例数字被"润"了怎么办)。
+polish()/_call_llm 代码保留, 待润色作为显式开关回归时再接。
 """
 from __future__ import annotations
 
@@ -178,12 +181,12 @@ def polish(raw_text: str) -> tuple[str, bool, str | None]:
     return raw_text, False, "other"
 
 
-def _diary_path(user_id: str) -> Path:
+def _diary_path(user_id: str, date_str: str | None = None) -> Path:
     user = users.load(user_id)
-    today = config.today_str()
-    year_dir = user.diary_dir / today[:4]
+    day = date_str or config.logical_today_str()
+    year_dir = user.diary_dir / day[:4]
     year_dir.mkdir(parents=True, exist_ok=True)
-    return year_dir / f"{today}.md"
+    return year_dir / f"{day}.md"
 
 
 def _atomic_write(path: Path, content: str) -> None:
@@ -194,7 +197,7 @@ def _atomic_write(path: Path, content: str) -> None:
 
 
 def today_has_content(user_id: str) -> bool:
-    """当前北京日期对应文件是否存在且非空白。"""
+    """当前逻辑日对应文件是否存在且非空白。"""
     try:
         path = _diary_path(user_id)
     except (OSError, ValueError, users.UserNotFoundError) as e:
@@ -228,6 +231,18 @@ def _last_header_time(content: str) -> str | None:
     """文件中最后一个时间戳段头的 HH:MM, 没有则 None。"""
     matches = _HEADER_RE.findall(content)
     return matches[-1] if matches else None
+
+
+def _can_merge_into_last_header(content: str, timestamp: str) -> bool:
+    """同分钟合并的前提: 最后一个段头是同一分钟, **且它在最后一个封存标记之后**。
+    单模式下「结束」后同一分钟继续发, 不能把新内容塞到封存线下面去当无头段落——
+    要另起段头 (2026-08-16 e2e 冒烟抓出, 020 同步修)。"""
+    last = None
+    for m in _HEADER_RE.finditer(content):
+        last = m
+    if last is None or last.group(1) != timestamp:
+        return False
+    return content.rfind(CLOSING_MARKER) < last.start()
 
 
 def _is_message_block(stripped: str) -> bool:
@@ -268,10 +283,10 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
     if not text:
         return "嗯? 没听清, 再说一次?", 0
 
-    polished, used_llm, error_kind = polish(text)
+    # v0.3: 不再润色, 原文直存(polish 保留未调用)
     # 契约规则 6: 一个空行分隔块 = 一条消息。块内空行收敛为单个换行,
     # 保证"一次发送"永远只算一段 (count_messages / undo / MCP 同一口径)。
-    polished = _NORMALIZE_BLANK_RE.sub("\n", polished.replace("\r\n", "\n").replace("\r", "\n")).strip()
+    polished = _NORMALIZE_BLANK_RE.sub("\n", text.replace("\r\n", "\n").replace("\r", "\n")).strip()
     if is_voice:
         polished = f"🎤 {polished}"
     elif polished.startswith(("# ", "---", "_(")):
@@ -281,10 +296,11 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
     timestamp = config.hhmm_str()
 
     try:
-        path = _diary_path(user_id)
+        day = config.logical_today_str()
+        path = _diary_path(user_id, day)
         if path.exists():
             existing = path.read_text(encoding="utf-8")
-            if _last_header_time(existing) == timestamp:
+            if _can_merge_into_last_header(existing, timestamp):
                 # 同分钟去重: 不写新段头, 仅追加内容
                 new_block = f"\n{polished}\n"
             else:
@@ -293,11 +309,11 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
         else:
             header = (
                 "---\n"
-                f"date: {config.today_str()}\n"
-                f"weekday: {config.weekday_str()}\n"
+                f"date: {day}\n"
+                f"weekday: {config.weekday_for(day)}\n"
                 "source: wechat-diary\n"
                 "---\n\n"
-                f"# {config.today_str()}\n"
+                f"# {day}\n"
             )
             new_block = f"\n\n**{timestamp}**\n\n{polished}\n"
             _atomic_write(path, header + new_block)
@@ -306,17 +322,27 @@ def write(user_id: str, text: str, is_voice: bool) -> tuple[str, int]:
         print(f"  写日记失败({user_id}): {e}")
         _AI_LOG.error(f"diary write failed for {user_id}: {type(e).__name__}: {e}")
         if isinstance(e, OSError) and e.errno == errno.ENOSPC:
-            return "存日记失败! 磁盘可能满了 💾 请检查 DIARY_DIR 所在盘", 0
-        return "收到啦, 但写入时出了点问题, 等会儿再试试?", 0
+            return "⚠️ 这条没记上! 磁盘可能满了 💾 请检查 DIARY_DIR 所在盘", 0
+        # 失败必须响亮: "收到啦"开头会让人误以为记上了——这条其实丢了
+        return "⚠️ 这条没记上! 写入出了问题, 等一会儿重发一次", 0
 
     voice_mark = "🎤 " if is_voice else ""
-    net_note = "" if used_llm else NET_NOTE_BY_KIND.get(error_kind, NET_NOTE_BY_KIND["other"])
-    reply = f"{voice_mark}嗯, 记下来啦~ 这是今天第 {n} 段 ✍️{net_note}\n继续说; 记错了发「撤回」, 说完了发「结束」"
+    reply = f"{voice_mark}记下来啦~ 今天第 {n} 段 ✍️"
+    if n == 1:
+        reply = welcome.FIRST_OF_DAY_PREFIX + reply + welcome.FIRST_OF_DAY_TIPS
     return reply, n
 
 
-def undo_last_block(user_id: str) -> bool:
-    """删除最后一条消息。返回是否成功删除。
+def count_day(user_id: str, date_str: str | None = None) -> int:
+    """数今天(或指定逻辑日)已记的段数; 探活回执用。读不到按 0 算, 永不抛。"""
+    try:
+        return count_messages(_diary_path(user_id, date_str))
+    except (OSError, ValueError, users.UserNotFoundError):
+        return 0
+
+
+def undo_last_block(user_id: str) -> tuple[bool, str | None]:
+    """删除最后一条消息。返回 (是否成功, 被删块原文)——原文给回执做预览。
 
     Phase 0.8: 同分钟可能合并多段, undo 只删最后一段消息;
     若该消息是其段头下的唯一一段, 顺带删掉孤儿段头。
@@ -324,7 +350,7 @@ def undo_last_block(user_id: str) -> bool:
     try:
         path = _diary_path(user_id)
         if not path.exists():
-            return False
+            return False, None
         content = path.read_text(encoding="utf-8")
         parts = content.split("\n\n")
 
@@ -335,7 +361,8 @@ def undo_last_block(user_id: str) -> bool:
                 last_msg_i = i
                 break
         if last_msg_i < 0:
-            return False
+            return False, None
+        removed = parts[last_msg_i].strip()
 
         new_parts = parts[:last_msg_i]
         # 清理末尾的孤儿段头 / 空块
@@ -350,17 +377,17 @@ def undo_last_block(user_id: str) -> bool:
         if new_content and not new_content.endswith("\n"):
             new_content += "\n"
         _atomic_write(path, new_content)
-        return True
+        return True, removed
     except (OSError, ValueError, users.UserNotFoundError) as e:
         print(f"  撤回最后一段失败({user_id}): {e}")
-        return False
+        return False, None
 
 
-def finalize_today(user_id: str) -> bool:
-    """今日封存:在文件末尾追加分隔线 + 时间戳注脚。
-    重复封存返回 True 但不追加第二次。当日空文件返回 False。"""
+def finalize_today(user_id: str, date_str: str | None = None) -> bool:
+    """封存指定逻辑日(默认今天): 文件末尾追加分隔线 + 时间戳注脚。
+    重复封存返回 True 但不追加第二次。空文件/不存在返回 False。"""
     try:
-        path = _diary_path(user_id)
+        path = _diary_path(user_id, date_str)
         if not path.exists():
             return False
         content = path.read_text(encoding="utf-8")

@@ -1,4 +1,6 @@
-"""chat 模式的 LLM 闲聊处理。
+"""⚠️ v0.3 起单模式无调用点——代码按谷雨要求保留, 待"AI 怎么融进 Agent"想清楚再启用。
+
+chat 模式的 LLM 闲聊处理。
 
 - 用 .env 配置的 AI_MODEL (默认 deepseek-v4-flash)
 - 带最近 5 轮 (user + assistant) 上下文, 内存 deque, 不持久化
@@ -57,7 +59,7 @@ _history: dict[str, Deque[dict]] = defaultdict(lambda: deque(maxlen=_HISTORY_MAX
 def chat(user_id: str, user_text: str) -> str:
     """单条闲聊。返回 AI 回复 (失败时回落兜底池; 零 key 时固定引导文案)。"""
     if not config.AI_API_KEY:
-        return welcome.random_no_key_chat()
+        return "想记什么直接发就行 ✍️"  # v0.3 单模式: 闲聊无调用点, 代码保留待 AI 回归
     history = _history[user_id]
     messages = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
     messages.extend(history)

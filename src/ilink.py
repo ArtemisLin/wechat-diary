@@ -554,6 +554,13 @@ def send_to_user(state: dict, user_id: str, text: str, use_token: bool = True) -
     return ok
 
 
+ITEM_TYPE_IMAGE = 2  # 官方 MessageItemType.IMAGE
+
+
+def _has_image_item(item_list: list) -> bool:
+    return any(item.get("type", 0) == ITEM_TYPE_IMAGE for item in item_list)
+
+
 def _coalesce_items(item_list: list) -> tuple[str, bool, bool]:
     """把一条 msg 里的多个 text/voice item 合成一次投递。
 
@@ -564,6 +571,7 @@ def _coalesce_items(item_list: list) -> tuple[str, bool, bool]:
     返回 (text, is_voice, has_empty_voice):
     is_voice = 任一 item 是语音; has_empty_voice = 出现过转写为空的语音 item
     (全部为空时上层用它回复"没听清")。
+    图片 item (type 2) 本版不解析——上层用 _has_image_item 判断并明确告知用户没记上。
     """
     pieces: list = []
     is_voice = False
@@ -683,10 +691,15 @@ def run_loop(state: dict, on_message, should_stop=None) -> str:
                 # 同一条 msg 的多个 text/voice item 合并成一次投递:
                 # 平台会把长内容 (实测约 200 字) 拆成多个 item, 对用户是"一次发送",
                 # 合并后日记里只算一段, 也只回一条回复。
-                text, is_voice, has_empty_voice = _coalesce_items(msg.get("item_list", []))
+                item_list = msg.get("item_list", [])
+                text, is_voice, has_empty_voice = _coalesce_items(item_list)
                 if not text:
                     if has_empty_voice:
                         send_message(state, user_id, context_token, "语音没听清呢，试试发文字？")
+                    elif _has_image_item(item_list) and user_id == config.USER_ID:
+                        # 图片本版不支持, 但绝不能静默: 用户得知道这条没记上
+                        import welcome as _welcome
+                        send_message(state, user_id, context_token, _welcome.IMAGE_UNSUPPORTED_REPLY)
                     continue
 
                 print(f"\n  收到{'(语音)' if is_voice else ''}: {text[:50]}")

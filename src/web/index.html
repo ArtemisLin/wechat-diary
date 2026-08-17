@@ -271,7 +271,7 @@
       <input type="text" id="inp-dir" placeholder="例如 /Users/me/Obsidian/diary" autocomplete="off" spellcheck="false">
       <button id="btn-pick">浏览…</button>
     </div>
-    <label class="field" for="inp-key">AI 润色 API Key <span class="opt">(可选, DeepSeek, 不填也完整可用)</span></label>
+    <label class="field" for="inp-key">AI API Key <span class="opt">(当前版本暂停用 AI, 填了也不会调用; 为将来可选功能保留)</span></label>
     <input type="password" id="inp-key" placeholder="sk-…" autocomplete="off">
     <div style="margin-top:6px; display:none" id="clear-key-box">
       <span class="hint">已配置 AI Key。</span>
@@ -303,7 +303,7 @@
       <div><span class="k">提醒时间</span><span class="v" id="kv-remind">—</span></div>
       <div><span class="k">微信账号</span><span class="v" id="kv-user">—</span></div>
       <div><span class="k">日记文件夹</span><span class="v" id="kv-dir">—</span></div>
-      <div><span class="k">AI 润色</span><span class="v" id="kv-ai">未配置</span></div>
+      <div><span class="k">AI</span><span class="v" id="kv-ai">停用 (纯机械记录)</span></div>
     </div>
     <div class="panel-foot">
       <button class="link" id="btn-edit-config">修改文件夹 / AI Key</button>
@@ -696,7 +696,7 @@ function renderPanel(st) {
   $("kv-remind").textContent = rh.length ? rh.map(fmtHour).join(" · ") : "—";
   $("kv-user").textContent = st.user_id_masked || "—";
   $("kv-dir").textContent = st.diary_dir || "—";
-  $("kv-ai").textContent = st.ai_key_set ? "已配置" : "未配置 (可选)";
+  $("kv-ai").textContent = st.ai_key_set ? "停用 (已配 Key, 当前版本不调用)" : "停用 (纯机械记录)";
 }
 
 $("btn-start").addEventListener("click", async function () {

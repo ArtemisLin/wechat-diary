@@ -244,13 +244,13 @@ def api_status() -> dict:
     diary_dir = config.DIARY_DIR
     dir_ok = _diary_dir_ok(diary_dir)
 
-    today = {"date": config.today_str(), "count": 0, "sealed": False}
+    today = {"date": config.logical_today_str(), "count": 0, "sealed": False}
     recent: list = []
     dir_error = ""
     if dir_ok:
         root = Path(diary_dir)
         try:
-            today = _day_summary(root, config.today_str())
+            today = _day_summary(root, config.logical_today_str())
             for date in reversed(mcp_server.list_dates(root)[-7:]):
                 recent.append(_day_summary(root, date))
         except OSError as e:

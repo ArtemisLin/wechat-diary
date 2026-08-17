@@ -1,4 +1,4 @@
-"""session_state 持久化与跨天 reset 测试。"""
+"""session_state: 逻辑日翻页检测 (v0.3 单模式) + 原子写。"""
 from __future__ import annotations
 
 import importlib
@@ -25,86 +25,49 @@ def setup(monkeypatch, tmp_path):
     return session_state, state_file
 
 
-def test_load_default_when_missing(setup):
-    ss, _ = setup
-    s = ss.load_or_reset("u-abc")
-    assert s.mode == "chat"
-    assert s.chat_count_today == 0
-    assert s.entered_date  # not empty
-
-
-def test_save_then_load(setup, monkeypatch):
+def test_first_call_returns_none_and_sets_today(setup, monkeypatch):
     ss, _ = setup
     import config
-    monkeypatch.setattr(config, "today_str", lambda: "2026-04-24")
-    ss.save("u-abc", ss.SessionState(mode="diary", entered_date="2026-04-24", chat_count_today=0))
+    monkeypatch.setattr(config, "logical_today_str", lambda now=None: "2026-04-24")
+    assert ss.rollover("u-abc") is None
+    assert ss.load_or_reset("u-abc").entered_date == "2026-04-24"
+
+
+def test_same_day_no_rollover(setup, monkeypatch):
+    ss, _ = setup
+    import config
+    monkeypatch.setattr(config, "logical_today_str", lambda now=None: "2026-04-24")
+    ss.rollover("u-abc")
+    assert ss.rollover("u-abc") is None
+
+
+def test_cross_day_returns_old_date(setup, monkeypatch):
+    """翻页返回旧日期, 供 main 自动封存; 之后 entered_date 已是今天。"""
+    ss, _ = setup
+    ss.save("u-abc", ss.SessionState(mode="single", entered_date="2026-04-23"))
+    import config
+    monkeypatch.setattr(config, "logical_today_str", lambda now=None: "2026-04-24")
+    assert ss.rollover("u-abc") == "2026-04-23"
+    assert ss.rollover("u-abc") is None
+    assert ss.load_or_reset("u-abc").entered_date == "2026-04-24"
+
+
+def test_legacy_mode_field_tolerated(setup, monkeypatch):
+    """老数据里 mode=diary/chat 照读不炸, 语义忽略。"""
+    ss, state_file = setup
+    state_file.write_text(json.dumps({"u-abc": {"mode": "diary", "entered_date": "2026-04-24", "chat_count_today": 5}}), encoding="utf-8")
+    import config
+    monkeypatch.setattr(config, "logical_today_str", lambda now=None: "2026-04-24")
     s = ss.load_or_reset("u-abc")
-    assert s.mode == "diary"
+    assert s.mode == "single"
     assert s.entered_date == "2026-04-24"
-
-
-def test_cross_day_resets_to_chat(setup, monkeypatch):
-    ss, _ = setup
-    ss.save("u-abc", ss.SessionState(mode="diary", entered_date="2026-04-23", chat_count_today=5))
-    import config
-    monkeypatch.setattr(config, "today_str", lambda: "2026-04-24")
-    s = ss.load_or_reset("u-abc")
-    assert s.mode == "chat"
-    assert s.entered_date == "2026-04-24"
-    assert s.chat_count_today == 0
-
-
-def test_same_day_keeps_state(setup, monkeypatch):
-    ss, _ = setup
-    ss.save("u-abc", ss.SessionState(mode="diary", entered_date="2026-04-24", chat_count_today=3))
-    import config
-    monkeypatch.setattr(config, "today_str", lambda: "2026-04-24")
-    s = ss.load_or_reset("u-abc")
-    assert s.mode == "diary"
-    assert s.chat_count_today == 3
-
-
-def test_enter_diary_resets_chat_count(setup, monkeypatch):
-    ss, _ = setup
-    import config
-    monkeypatch.setattr(config, "today_str", lambda: "2026-04-24")
-    ss.save("u-abc", ss.SessionState(mode="chat", entered_date="2026-04-24", chat_count_today=4))
-    ss.enter_diary("u-abc")
-    s = ss.load_or_reset("u-abc")
-    assert s.mode == "diary"
-    assert s.chat_count_today == 0
-
-
-def test_exit_diary_resets_to_chat(setup, monkeypatch):
-    ss, _ = setup
-    import config
-    monkeypatch.setattr(config, "today_str", lambda: "2026-04-24")
-    ss.save("u-abc", ss.SessionState(mode="diary", entered_date="2026-04-24", chat_count_today=0))
-    ss.exit_diary("u-abc")
-    s = ss.load_or_reset("u-abc")
-    assert s.mode == "chat"
-
-
-def test_increment_chat_count(setup, monkeypatch):
-    ss, _ = setup
-    import config
-    monkeypatch.setattr(config, "today_str", lambda: "2026-04-24")
-    ss.load_or_reset("u-abc")
-    ss.increment_chat_count("u-abc")
-    ss.increment_chat_count("u-abc")
-    s = ss.load_or_reset("u-abc")
-    assert s.chat_count_today == 2
 
 
 def test_atomic_write(setup, monkeypatch):
     """保存时先写 .tmp 再 replace, 不留半截文件。"""
     ss, state_file = setup
-    import config
-    monkeypatch.setattr(config, "today_str", lambda: "2026-04-24")
-    ss.save("u-abc", ss.SessionState(mode="chat", entered_date="2026-04-24", chat_count_today=0))
+    ss.save("u-abc", ss.SessionState(mode="single", entered_date="2026-04-24"))
     assert state_file.exists()
-    # 临时文件不应残留
     assert not state_file.with_suffix(".json.tmp").exists()
-    # 内容能解析
     data = json.loads(state_file.read_text(encoding="utf-8"))
     assert "u-abc" in data
