@@ -1,53 +1,39 @@
 # HANDOFF — 交接文档
 
-> 写给下一个接手本项目的 AI Agent。最后更新: **2026-08-11 中午 (美东)**。
+> 写给下一个接手本项目的 AI Agent。最后更新: **2026-08-16**。
 > 读完本文件, 你应该知道: 下一件事干什么、系统怎么跑起来的、对话链路长什么样、
 > 哪些坑别再踩、哪些事没做完需要主动提醒用户。
 >
-> **⚠️ 上下文已被清理过。用户手上有一批攒好的反馈意见, 接手第一件事是听他说完。**
+> **⚠️ 本项目现在是 020 插件版的"影子": 产品形态/文案/规则以 020 为准, 改动先在 020 做、再回灌到这里。**
+> 020 的交接文档在 `../020obs-wechatdairy/HANDOFF.md`(本地文件, 不进 git), 两份要一起读。
 
-## 0. 下一步要做的事 (2026-08-11 起, 当前任务)
+## 0. 现状与下一步 (2026-08-16)
 
-**主题: Agent 对话质量整改 —— "功能都通了, 但它很不智能"。**
+**v2.1.0 (commit 4b9a657) = 与 020 插件版 0.3.0 同步的产品形态重做, 已提交本地、未 push、未打包发版。**
+谷雨的意图: "两个版本——没有 Obsidian 库的也能用"。019 停运状态未变
+(`~/Library/LaunchAgents/com.wechat-diary.webui.plist.disabled`、`data/ilink_state.json.disabled-20260813`
+两个文件改回原名即复活), 因为它和 020 抢同一个 bot, 谷雨自己用 020。
 
-用户原话: *"现在功能性的问题做好了, 但是这个 Agent 它非常的不智能, 也就是说
-它跟用户对话的时候经常会出现各种各样的问题, 我们接下来就要修复这样的问题。"*
+**这轮回灌了什么** (细节见 CHANGELOG v2.1.0):
+单模式发什么记什么 / 「在吗」探活不落库 / 契约 v1.2 逻辑日 (`DAY_START_HOUR`) /
+AI 停用 (代码保留) / 文案审定 9 项 / 图片明确回"没记上" / 「结束」后同分钟续写另起段头。
+`python3 -m pytest tests/` **287 全绿**。
 
-工作方式建议:
-1. **先把用户的反馈清单收完整再动手。** 他会一条条提 (可能是语音输入, 有错字)。
-   逐条记录成清单, 分类 (意图识别 / 模式切换 / 回复文案 / 记录准确性 / 时机),
-   再判断每条是"规则不够"还是"架构不对"。别听一条改一条, 这些问题大概率同源。
-2. 改之前读下面 §2 的对话链路地图, 知道每个决策点在哪一行。
-3. **守住 §1 的产品红线** —— 尤其"不做回顾/回声类功能""零 key 可用"
-   "AI 失败原文照存"。对话变聪明不能以吞掉用户日记为代价。
-4. 每改一处补测试; `python3 -m pytest tests/` 当前 **295 个应全绿**。
-5. 大改动跑一轮多 agent 对抗审查再交付 (历史经验: 审查抓出的真 bug 远多于自查)。
+**没回灌的 (诚实清单, 按重要度)**:
+1. **协议 5 处偏差仍在** (`../020obs-wechatdairy/docs/protocol-notes.md` §1): 最要紧的是
+   `-14` 仍按"session 过期→exit 2→start.bat 删 state 重扫码"处理——官方语义是 stale token
+   **暂停 1 小时**, 而且**服务端解绑不存在、token 删了不可逆**(8/14-16 查实)。这条对
+   "没有 Obsidian 的用户"是真风险: 一次 -14 就把能用的 token 删了。要复活 019 给别人用, 先修这个。
+   其余: longpolling_timeout_ms 塞错地方、BASE_URL 硬编码、登录状态机、binded_redirect 语义。
+2. **图片不收**: 需要 AES-ECB 解密 (Python 无内置 AES, 得加 cryptography/pycryptodome 依赖,
+   PyInstaller 打包也要跟着改)。020 的实现在 main.js `downloadImage`/`sniffImageExt`, 协议在
+   protocol-notes。当前 bot 会明确告诉用户"这条没记上, 请用插件版"。
+3. **半绑定自愈不适用**: 019 的 token/userId 都在 `data/ilink_state.json` 一个文件里, 没有
+   020 那种 secretStorage/data.json 分裂问题, 不需要移植。
+4. 020 的 skipBacklog(恢复后先推游标不落笔) 也不适用——019 没有"凭据在、游标丢"的场景。
 
-### 我(上一任)观察到的可疑点 —— 仅供参照, 以用户实际反馈为准
-
-这些是读代码时看到的结构性弱点, **没有经过用户确认**, 不要当成已定的 bug 清单:
-
-- **diary 模式是个黑洞**: 除了 UNDO / FINALIZE, 其余任何消息一律直接写进日记
-  ([main.py:75-80](../src/main.py))。用户在记录中问一句"刚才那条记上了吗"
-  "你还在吗", 会被原样写进当天日记。这大概是"不智能"感最强的来源。
-- **意图识别是纯规则 + 15 字长度阈值** ([intents.py](../src/intents.py)):
-  超过 15 字就默认判日记, 只有 START_DIARY 有子串短语兜底。像
-  "好了今天就先这样吧" 这种自然收尾语识别不到, 只认"结束/收工/归档"等词。
-- **模式切换只认关键词**, 没有语义兜底; 而 chat 模式的 LLM 被明令禁止宣称
-  自己切了模式 ([chat_handler.py:33-37](../src/chat_handler.py)) —— 用户
-  说了个近义句没命中词表时, bot 只会干巴巴地重复"发『开始记日记』就开始"。
-- **闲聊 LLM 没有任何记忆与画像**: system prompt 固定, 历史只有内存里 5 轮,
-  进程重启即失忆 ([chat_handler.py:52-54](../src/chat_handler.py)); 也读不到
-  用户的名字/习惯 (user_profile 有名字但没喂给 LLM)。
-- **润色是单条无上下文** ([diary_writer.py:28-36](../src/diary_writer.py)),
-  连续几段之间没有连贯性概念。
-- **回复文案大量静态随机池** ([welcome.py](../src/welcome.py)), 多用几次
-  就能感到机械重复。
-- **成本提示可能烦人**: chat 第 2 条起每条都追加 CHAT_COST_REMINDER
-  ([main.py:112-114](../src/main.py))。
-- **跨天自动 reset 回 chat 模式** ([session_state.py:54-69](../src/session_state.py)):
-  北京时间过 0 点后, 正在记录的用户下一条消息会掉回闲聊模式。
-- **时区错位 (已实测, 见 §3)**: 用户人在美东, 日期按北京时间算。
+**下一步**: 谷雨拍板要不要 push + 重新打包发 Release (打包脚本 `build/`, 见 §3)。
+在那之前, 建议先修上面第 1 条的 -14 处理。
 
 ## 1. 一句话与不可谈判项
 
@@ -57,10 +43,11 @@ wechat-diary = 微信说话 → 用户自己电脑上的 markdown 日记。管�
 
 1. **只做记录管道 + 未写提醒**。用户明确拒绝一切"回声/回顾/把旧日记还给用户"
    类功能 (理由: 不完善的 Agent 递不合时宜的旧文是伤害)。**不要再提议此类功能。**
-2. 它不是聊天 Agent。闲聊模式只是防误记的守门。
-   *(注: 本轮整改是让这个守门更聪明, 不是把它变成聊天机器人 —— 边界仍在。)*
+2. 它不是聊天 Agent。v2.1 起连闲聊模式都没了: 发什么记什么, 「在吗」类探活回状态不落库。
+   AI (润色/闲聊) 全面停用, 代码保留; 怎么把 AI 融回 Agent 是谷雨还在想的题 (020 HANDOFF #5/#7)。
+   **别用 AI 判断"这条记不记"**——判错=静默丢用户的话, 记录工具第一美德是可预测。
 3. 数据主权: 纯本地 markdown, 永不做云托管/SaaS/多用户。
-4. 零 key 可用是底线, AI 失败时原文照存。
+4. 零 key 可用是底线 (现在是唯一形态), 写入失败必须响亮 (「⚠️ 这条没记上!」)。
 5. 深度需求 (回顾/检索/周报) 的唯一出口 = 只读 MCP + 用户自选 Agent。
 6. 命令行入口 (main.py / start.bat / ilink.py login) 永远保留, webui 是并列入口。
 7. 开箱即用优先: 能少让用户配一样东西就少配一样。
@@ -70,56 +57,50 @@ wechat-diary = 微信说话 → 用户自己电脑上的 markdown 日记。管�
 ```
 微信消息
   └─ ilink.run_loop            长轮询收消息; _coalesce_items 把平台拆开的
-     (src/ilink.py:587)        同一条消息多 item 无损拼回"一次发送"
-       └─ main._on_message     离线>12h 时给首条回复附一次性提示
-          (src/main.py:174)
-            └─ main._dispatch  首次见面欢迎 / 取名流程的守门
-               (src/main.py:118)   profile.state: unknown → awaiting_name → active
-                 └─ main._handle   ★ 双模式主路由, 绝大多数"不智能"问题在这里
-                    (src/main.py:49)
+                               同一条消息多 item 无损拼回"一次发送";
+                               纯图片消息 → 回 IMAGE_UNSUPPORTED_REPLY (不静默)
+       └─ main._on_message     离线>24h 时给首条回复附一次性提示
+            └─ main._dispatch  ① _rollover: 逻辑日翻页→自动封存旧的一天
+                               ② 首次见面: 内容优先(先记再欢迎) / 取名流程
+                               ③ 跨天告知与"今天第一条"合并
+                 └─ main._handle   ★ 单模式主路由
 ```
 
-`_handle` 内部的判定顺序 (这就是全部的"智能"):
+`_handle` 内部的判定顺序 (v2.1 单模式, 这就是全部的"智能"):
 
-| 顺序 | 判定 | 代码位置 | 说明 |
-|---|---|---|---|
-| 1 | 非本人消息直接拒 | main.py:51 | 单用户产品 |
-| 2 | `session_state.load_or_reset` | main.py:55 | 取 mode, 跨天自动回 chat |
-| 3 | `intents.detect(text)` | main.py:56 | **纯规则, 无 LLM** |
-| 4 | HELP 全模式生效 | main.py:59 | |
-| 5 | **diary 模式**: UNDO / FINALIZE / 其余全部写日记 | main.py:63-80 | 每 4 段追加劝收尾 |
-| 6 | **chat 模式**: START_DIARY → 进 diary | main.py:83-92 | 同句带称呼会一并收下 |
-| 7 | chat 模式: UNDO/FINALIZE → 提示不在记录中 | main.py:94-97 | |
-| 8 | chat 模式: 「叫我XX」→ 改名 | main.py:100-103 | names.py 规则引擎 |
-| 9 | chat 模式: CHAT(招呼词) → 静态回复池 | main.py:105-107 | 省 LLM 开销 |
-| 10 | chat 模式: 其余 → LLM 闲聊 | main.py:110 | chat_handler.chat |
-| 11 | chat 第 2 条起附成本提示 | main.py:112-114 | |
+| 顺序 | 判定 | 说明 |
+|---|---|---|
+| 1 | 非本人消息直接拒 | 单用户产品 |
+| 2 | `intents.detect_ex(text)` → (intent, suspect) | **纯规则, 无 LLM** |
+| 3 | HELP → 帮助 | |
+| 4 | CHAT (在吗/hello/测试…含复读折叠) → `ping_reply(今日段数)` | **不落库** |
+| 5 | UNDO → 删最后一条, 回执带被删内容预览 | |
+| 6 | FINALIZE → 写封存标记 (可选仪式, 不切模式); 之后继续发照记 | 收尾语分白天/晚安池 |
+| 7 | START_DIARY: 短句→"现在不用了"; 长句(suspect)→整句照记+顺带告知 | 老习惯兼容 |
+| 8 | 「叫我XX」→ 改名 (names.py 规则引擎) | |
+| 9 | **其余一切 → 写入** | 每天第一条带完整命令提示, 之后干净 |
 
 各模块职责:
 
 - **[intents.py](../src/intents.py)** — 规则意图识别。`MAX_COMMAND_LEN=15`:
-  只有短消息才匹配命令词; 长句仅靠 `_START_DIARY_PHRASES` 子串兜底。
-  normalize 会剥尾部语气词 (吧/啊/啦/呀/哦/嘛/呗/哈) 和标点。
-- **[session_state.py](../src/session_state.py)** — chat/diary 双态 +
-  当日 chat 计数, 落盘 `data/session_state.json`, 跨天 reset。
-- **[chat_handler.py](../src/chat_handler.py)** — 闲聊 LLM。system prompt
-  里有一段**强约束禁止它宣称模式切换** (历史上它撒过谎), 改 prompt 时别删。
-  历史 5 轮, 内存 deque, 不持久化。
-- **[diary_writer.py](../src/diary_writer.py)** — 润色 (`POLISH_PROMPT`,
-  temperature 0.3) + 原子写入 + 计数/撤回/封存。**LLM 失败必须原文照存**,
-  错误分类 → `NET_NOTE_BY_KIND` 友好提示。
-- **[names.py](../src/names.py)** — 取名规则引擎 (「叫我X」/裸名/拒绝识别/
-  复读折叠/疑问句排除), 配 key 时 LLM 兜底。踩过 2 个 critical:
-  闲聊「你叫我干嘛」误改名、「不用了谢谢」被当成名字 —— 改这里务必跑测试。
-- **[welcome.py](../src/welcome.py)** — 全部静态文案与随机池 (欢迎/帮助/
-  招呼/收尾/劝收尾/成本提示/取名相关模板)。**改文案基本都在这个文件。**
+  只有短消息才匹配命令词; 长句仅靠 `_START_DIARY_PHRASES` 子串兜底 (→suspect)。
+  normalize 剥尾部语气词和标点; `_fold_repeats` 折叠「在吗在吗」。
+- **[session_state.py](../src/session_state.py)** — 只剩逻辑日翻页检测 `rollover()`,
+  落盘 `data/session_state.json` (老字段 mode/chat_count_today 保留兼容, 语义忽略)。
+- **[config.py](../src/config.py)** — `logical_today_str()` (凌晨 `DAY_START_HOUR` 前算前一天),
+  `is_night_now()`, `weekday_for()`。**日记文件名/封存/计数一律走逻辑日, 别用 today_str()。**
+- **[diary_writer.py](../src/diary_writer.py)** — 原文直存 + 原子写入 + 计数/撤回(返回被删文本)/
+  封存(可指定日期)/`count_day`。`polish()`/`_call_llm` 保留未调用。
+  同分钟合并前提: `_can_merge_into_last_header` (最后段头同分钟**且在封存线之后**)。
+- **[chat_handler.py](../src/chat_handler.py)** — 无调用点, 代码保留。
+- **[names.py](../src/names.py)** — 取名规则引擎。踩过 2 个 critical:
+  「你叫我干嘛」误改名、「不用了谢谢」被当成名字 —— 改这里务必跑测试。
+- **[welcome.py](../src/welcome.py)** — 全部文案 (与 020 逐字对齐, 除"目录在哪改"那句
+  按宿主不同)。**改文案两侧一起改。**
 - **[user_profile.py](../src/user_profile.py)** — 用户名与 state 机
   (unknown / awaiting_name / active), 落盘 `data/user_profiles.json`。
-- **[scheduler.py](../src/scheduler.py)** — 22:00/23:00 (北京时间) 未写提醒 +
-  启动补偿 `run_catchup`。受 iLink"20 小时无互动不能主动发消息"限制。
-
-一条消息的实际日志足迹: `data/logs/ilink.log` (收发), `data/logs/ai.log`
-(LLM 调用与失败), `data/logs/webui.out.log` (控制台打印, 含提醒触发)。
+- **[scheduler.py](../src/scheduler.py)** — 22:00/23:00 未写提醒 + 启动补偿。
+  提醒文案已改为"直接发就行"。受 iLink"20 小时无互动不能主动发消息"限制。
 
 ## 3. 当前运行状态 (2026-08-11 中午 · 美东)
 
