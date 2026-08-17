@@ -1,5 +1,11 @@
 # Changelog
 
+## 归档 (2026-08-16)
+
+项目归档, 后续开发全部转到 Obsidian 插件版 [obsidian-wechat-diary](https://github.com/ArtemisLin/obsidian-wechat-diary)。
+理由: 插件版已覆盖全部场景 (Obsidian 免费, 装上只当文件夹用即可), 双版本维护成本不值得为一个假想的
+"不装 Obsidian"用户付。v2.1.0 是最后一次代码更新, 未打包发布。
+
 ## v2.1.0 (2026-08-16) — 与 Obsidian 插件版 0.3.0 同步的产品形态重做
 
 定位从"日记应用"变成"微信 → vault 的零摩擦收件口"; 与插件版共用同一套文案与规则。

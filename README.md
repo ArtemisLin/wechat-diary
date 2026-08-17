@@ -1,4 +1,15 @@
-# wechat-diary · 微信随手记 (电脑常驻版)
+# wechat-diary · 微信随手记 (Python 常驻版)
+
+> ## 📦 本项目已归档 (2026-08-16), 请使用 Obsidian 插件版
+>
+> **👉 [obsidian-wechat-diary](https://github.com/ArtemisLin/obsidian-wechat-diary)** —— 在 Obsidian 第三方插件里搜 **WeChat Diary** 即可安装。
+>
+> 插件版功能更全 (支持图片、卸载重装自愈), 且**不需要"用" Obsidian**: 装上只是为了给它一个文件夹,
+> 记下来的东西是纯 markdown, 拿任何编辑器都能开。装一个 Obsidian 比跑本项目的免签名 exe 更省事。
+>
+> 本仓库保留作为历史与黑客松提交物。最后一次代码更新 (v2.1.0) 已与插件版 0.3.0 的产品形态对齐,
+> 但**未继续修复**已知协议偏差 (见 docs/HANDOFF.md §0), 也不再打包发布。
+> 只读 MCP server (`src/mcp_server.py`) 读的是纯 md 文件夹, 与本程序进程无关, 对插件版写出的库同样可用。
 
 **对着微信说话, 内容自动落进你自己电脑的 markdown 库。**
 
